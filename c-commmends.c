@@ -58,3 +58,79 @@ Explanation:
 - Pointers: Store memory addresses, allow indirect access to variables.
 - malloc: Allocates memory dynamically at runtime; must be freed with free().
 */
+
+
+// fscanf - wczytywanie z pliku fscanf(pliki, "formaty", &zmienna1, &zmienna2, ...);
+
+int main(void) {
+    FILE *fp;
+    int a;
+    float b;
+    char slowo[20];
+
+    fp = fopen("dane.txt", "r");   // otwarcie pliku do odczytu
+    if (fp == NULL) {
+        perror("Nie można otworzyć pliku");
+        return 1;
+    }
+
+    fscanf(fp, "%d %f %s", &a, &b, slowo);
+
+    printf("Wczytano: %d, %.2f, %s\n", a, b, slowo);
+
+    fclose(fp);
+    return 0;
+}
+
+/*
+Co się dzieje krok po kroku:
+
+1️⃣ fopen("dane.txt", "r") — otwiera plik do czytania i zwraca wskaźnik do FILE.
+2️⃣ fscanf(fp, "%d %f %s", &a, &b, slowo) — czyta dane z pliku zgodnie z formatem.
+3️⃣ Dane trafiają do zmiennych a, b, slowo.
+4️⃣ fclose(fp) — zamyka plik.
+
+*/
+
+
+// fprintf - zapis do pliku fprintf(plik, "formaty", zmienna1, zmienna2, ...);
+int main(void) {
+    FILE *fp;
+    int a = 42;
+    float b = 3.14;
+
+    fp = fopen("wyniki.txt", "w"); // "w" = write, czyli zapis
+    if (fp == NULL) {
+        perror("Błąd otwarcia pliku");
+        return 1;
+    }
+
+    fprintf(fp, "Wynik: %d, liczba pi: %.2f\n", a, b);
+
+    fclose(fp);
+    return 0;
+}
+
+/*
+Co się dzieje:
+1️⃣ fopen("wyniki.txt", "w") — tworzy (lub nadpisuje) plik do zapisu.
+2️⃣ fprintf(fp, ...) — pisze dane do pliku, zamiast na ekran.
+3️⃣ fclose(fp) — zamyka plik i zapisuje dane na dysk.
+*/
+
+
+// perror - wyświetlanie błędów systemowych
+
+#include <errno.h>
+
+int main(void) {
+    FILE *fp = fopen("nie_istnieje.txt", "r");
+    if (fp == NULL) {
+        perror("Błąd otwarcia pliku");
+        return 1;
+    }
+    fclose(fp);
+    return 0;
+}
+
+
