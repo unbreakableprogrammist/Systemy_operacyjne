@@ -2,5 +2,7 @@
 #include "hello.h"
 
 void hello(){
-    printf("Hello World!\n");
+    int liczba;
+    scanf("%d", &liczba); // &liczba - wskaźnik na zmienną liczba
+    printf("Hello World! %d\n", liczba);
 }
