@@ -4,7 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#define ERR(source) (perror(source), fprintf(stderr, "%s:%d\n", __FILE__, __LINE__), exit(EXIT_FAILURE))
+#define ERR(source) (perror(source), fprintf(stderr, "%s:%d\n", __FILE__, __LINE__), exit(EXIT_FAILURE))  // perror po prostu wypisuej blad w stderr
 
 extern char **environ;
 
@@ -24,7 +24,7 @@ int main(int argc, char **argv)
         if (setenv(argv[i - 1], argv[i], 1))  // bierzemy nazwe argv[i-1] i ustawiamy jako argv[i] i 1 dlatego ze zawsze nadpisujemy (  0 jesli tylko podmienamyu jesli zmiennej nie ma )
         {
             if (EINVAL == errno){ // sprawdzamy czy jesli cos jest zle 
-                printf("opis błędu: %s\n", strerror(errno));
+                printf("opis błędu: %s\n", strerror(errno));  // strerror zamienia errno na wypisywanie bledy
                 ERR("setenv - variable name contains '='");
             }
             ERR("setenv");
