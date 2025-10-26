@@ -1,19 +1,10 @@
-FLAGS = -Wall -fsanitize=address,undefined
-all: main
-	./main
-main: main.o hello.o
-	gcc $(FLAGS) -o main main.o hello.o
-all2: zadanie2
-	./zadanie2
-zadanie2: zad2.c
-	gcc $(FLAGS) -o zadanie2 zad2.c
-main.o: main.c hello.h
-	gcc -o main.o -c main.c
-
-hello.o: hello.c hello.h
-	gcc -o hello.o -c hello.c
-
-.PHONY: clean
-
+all: prog1 prog2 prog3
+prog1: prog1.c hello.h
+	gcc -Wall -fsanitize=address,undefined -o prog1 prog1.c
+prog2: prog2.c hello.h
+	gcc -Wall -fsanitize=address,undefined -o prog2 prog2.c
+prog3: prog3.c
+	gcc -Wall -fsanitize=address,undefined -o prog3 prog3.c
+.PHONY: clean all
 clean:
-	rm -f *.o main
+	rm prog1 prog2 prog3
