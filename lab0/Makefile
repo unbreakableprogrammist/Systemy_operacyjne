@@ -21,4 +21,4 @@ prog3: prog3.c
 	gcc ${CFLAGS} ${LDFLAGS} -o prog3 prog3.c
 .PHONY: clean all
 clean:
-	rm prog1 prog2 prog3 prog4 prog5 prog6 prog7 
+	rm prog1 prog2 prog3 prog4 prog5 prog6 prog7 prog8
