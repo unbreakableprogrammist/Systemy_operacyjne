@@ -2,6 +2,12 @@ CC=gcc
 CFLAGS=-Wall -fsanitize=address,undefined
 LDFLAGS=-fsanitize=address,undefined
 all : prog1 prog2
+prog6: prog6.c
+	${CC} ${CFLAGS} ${LDFLAGS} -o prog6 prog6.c
+
+prog5: prog5.c
+	${CC} ${CFLAGS} ${LDFLAGS} -o prog5 prog5.c
+
 prog4: prog4.c
 	${CC} ${CFLAGS} ${LDFLAGS} -o prog4 prog4.c
 
@@ -16,4 +22,4 @@ prog1: prog1.c
 
 .PHONY: clean all
 clean:
-	rm -f prog1 prog2 prog3 prog4
+	rm -f prog1 prog2 prog3 prog4 prog6 prog5
