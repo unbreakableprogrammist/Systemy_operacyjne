@@ -107,7 +107,7 @@ void list_files(char* path, const char* out_path)
             // BŁĄD: Ta linia powinna być `strcpy(full_path, path);`
             // lub `full_path[0] = '\0';` powinno być PRZED pętlą lub NA POCZĄTKU pętli.
             strcat(full_path, path); // Dołącz ścieżkę katalogu
-            strcat(full_path, "/");  // Dołącz separator
+            strcat(full_path, "/");  // Dołącz separator 
             strcat(full_path, de->d_name); // Dołącz nazwę pliku
 
             // Użyj lstat(), aby pobrać informacje o pliku (poprawnie obsługuje linki symboliczne)
@@ -288,7 +288,8 @@ int main(int argc, char** argv)
             // Zapisz wskaźnik na argument (optarg) do tablicy
             // i zwiększ licznik.
             // UWAGA: Program się wysypie, jeśli podamy więcej niż MAX_FILES (20) flag -p
-            files_to_list[i++] = optarg;
+            files_to_list[i] = optarg;
+            i++;
         }
         if (c == 'o') // Jeśli znaleziono opcję -o
         {
