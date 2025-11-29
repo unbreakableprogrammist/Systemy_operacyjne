@@ -105,6 +105,9 @@ int main(int argc, char **argv)
     }else{
         // parent
         parent_work(oldmask);
+        while (wait(NULL) > 0)
+        {
+        }
     }
     return EXIT_SUCCESS;
 }
