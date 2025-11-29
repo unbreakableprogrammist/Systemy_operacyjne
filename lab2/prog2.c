@@ -84,7 +84,8 @@ int main(int argc, char **argv)
     while(n>0){
         sleep(k);
         kill(0,SIGUSR1); // wysylamy sygnal do wszystkich dzieci
-        while((t=waitpid(0,NULL,WNOHANG))>0 ){ // sprawdzamy czy jakies dziecko nie umarlo
+        // Uwaga te petle na dole mozna zastapic przez nadpisanie SIGCHILD i tam robienie wiatpida ( bo wiele sygnalow sie stackuje w jeden)
+        while((t=waitpid(0,NULL,WNOHANG))>0 ){ // sprawdzamy czy jakies dziecko nie umarlo 
             n--;
         }
         sleep(p);
