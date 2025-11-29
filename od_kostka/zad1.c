@@ -38,7 +38,7 @@ ssize_t buff_read(int fd, char* buf, size_t nbytes)
     {
         // Próba odczytania danych. Powinno być: c = TEMP_FAILURE_RETRY(read(fd, buf, nbytes));
         // ale w kodzie jest samo read. TEMP_FAILURE_RETRY jest zdefiniowane w unistd.h po _GNU_SOURCE.
-        c = read(fd, buf, nbytes); // Czytaj 'nbytes' do bufora 'buf'
+        c = TEMP_FAILURE_RETRY(read(fd, buf, nbytes)); // Czytaj 'nbytes' do bufora 'buf'
         if (c == 0) // Jeśli read zwróci 0, oznacza to koniec pliku (EOF)
             return len; // Zwróć liczbę bajtów wczytanych do tej pory
         if (c < 0)  // Jeśli read zwróci < 0, oznacza to błąd
