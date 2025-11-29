@@ -57,7 +57,7 @@ void parent_work(int b, int s, char* name)
     char* buf = malloc(s);
     if(buf==NULL)
         ERR("malloc");
-    if((out = open(name, O_WRONLY | O_CREAT | O_TRUNC, 0777)) < 0)
+    if((out = open(name, O_WRONLY | O_CREAT | O_TRUNC | O_APPEND, 0777)) < 0)
         ERR("open output file");
     if((in = open("/dev/urandom", O_RDONLY)) < 0)
         ERR("open input file");  
