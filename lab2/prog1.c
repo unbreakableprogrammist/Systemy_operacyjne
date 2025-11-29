@@ -46,9 +46,13 @@ int main(int argc , char** argv){ // argc - ilosc argumentow , argv - wskaznik n
             // Jeśli PID w tablicy to 0, znaczy że już to dziecko obsłużyliśmy wcześniej
             if (dzieci[i] == 0) continue; 
 
-            // waitpid z WNOHANG sprawdza status bez blokowania
+            // WNOHANG sprawia, że:
+            // 0   -> dziecko nadal pracuje (żyje)
+            // PID -> dziecko skończyło, funkcja pobiera status i usuwa (sprząta) proces zombie
+            // -1  -> błąd (np. brak takiego dziecka)
             int status;
-            pid_t result = waitpid(dzieci[i], &status, WNOHANG);
+            // kill nie dziala bo process zombie nadal istnieje
+            pid_t result = waitpid(dzieci[i], &status, WNOHANG);  // talki waitpid zwraca 0 jesli dziela , jesli nie dziala co czysci 
 
             if (result == 0) {
                 // Dziecko nadal działa
@@ -71,5 +75,6 @@ int main(int argc , char** argv){ // argc - ilosc argumentow , argv - wskaznik n
         
         sleep(3);
     }
+    free(dzieci);
     return EXIT_SUCCESS;
 }
