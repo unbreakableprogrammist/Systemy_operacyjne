@@ -3,5 +3,8 @@
         "unistd.h": "c",
         "dirent.h": "c",
         "stdio.h": "c"
-    }
+    },
+    "editor.inlineSuggest.enabled": false,
+    "editor.suggest.preview": false,
+    "intellicode.completionsEnabled": false
 }

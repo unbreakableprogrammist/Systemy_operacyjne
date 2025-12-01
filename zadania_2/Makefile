@@ -4,7 +4,8 @@ LDFLAGS=-fsanitize=address,undefined
 
 prog1: zadanie1.c
 	$(CC) $(CFLAGS) -o prog1 zadanie1.c $(LDFLAGS)
-
+prog3 : zadanie3.c
+	$(CC) $(CFLAGS) -o prog3 zadanie3.c $(LDFLAGS)
 .PHONY: clean all
 clean:
 	rm -f prog1 prog2 prog3 prog4 prog6 prog5 *.txt
