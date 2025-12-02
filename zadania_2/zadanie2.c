@@ -73,8 +73,14 @@ void children_work(int p,int k){
     while(!ill){
         sigsuspend(&oldmask);
     }
-    struct timespec nowa = {k,0};
-    while(nanosleep(&nowa,NULL)>0){
+    //struct timespec nowa = {k,0};
+    alarm(k);
+    //struct sigaction sa;
+    memset(&sa,0,sizeof(sa));
+    sa.sa_handler = alarm_handler; // robi to samo co alarm , oznacza ze rodzic skonczyl prace
+    if(sigaction(SIGALRM,&sa,NULL)<0)
+        ERR("sigaction");
+    while(parent_running){
         nanosleep(&ts,NULL);
         kill(0,SIGUSR1);
     }
@@ -96,8 +102,10 @@ int main(int argc,char** argv){
         ERR("sigaction");
     // forkujemy dzieci 
     pid_t dziecko;
+    pid_t pierwsze_dziecko;
     for(int i=0;i<n;i++){
         dziecko=fork();
+        if(i==0) pierwsze_dziecko=dziecko;
         if(dziecko<0) ERR("fork");
         if(dziecko==0){
             children_work(p,k);
@@ -109,6 +117,7 @@ int main(int argc,char** argv){
     sa.sa_handler = SIG_IGN ;
     if(sigaction(SIGUSR1,&sa,NULL)<0)
         ERR("sigaction");
+    kill(pierwsze_dziecko,SIGUSR1);
     alarm(t);
     while(parent_running){
         // <- tutaj waitpid i jesli ktores dziecko wyjdzie to chore i zabrane przez rodzicow 
