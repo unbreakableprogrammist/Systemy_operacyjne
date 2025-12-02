@@ -22,16 +22,29 @@ void usage(char *name) {
 
 volatile sig_atomic_t parent_running = 1; //czy nie minela sekunda 
 volatile sig_atomic_t ill = 0; // czy dziecko jest chore
-volatile sig_atomic_t should_be_ill = 0;  // czy moze zachorowac ( prawdopodobienstwo )
+volatile sig_atomic_t probability=0;
 volatile sig_atomic_t licznik = 0;  // licznik kaszlniec na mnie
+volatile sig_atomic_t sygnal_kaszlnal_na_nas=0;
 void alarm_handler(int sig){
     parent_running = 0;
 }
-void siguser1_handler(int sig){
-    if(should_be_ill && !ill)
+void siguser1_handler(int sig,siginfo_t* info,void* usless){
+    if(ill==1) return;
+    pid_t who_coughed;
+    if(info == NULL) 
+        who_coughed=-1; // blad
+    else
+        who_coughed=info->si_pid;
+    printf("Child of this pid: %d, coughet ad me: %d",who_coughed,getpid());
+    srand(time(NULL)*getpid());
+    int is_sick = (1+rand()%100);
+    if(is_sick<=probability){
         ill=1;
+    }
     licznik++;
+
 }
+
 
 void children_work(int p,int k){
     srand(time(NULL)*getpid());
@@ -45,19 +58,27 @@ void children_work(int p,int k){
     // losujemy losowy czas i prawdopodobienstwo
     int random_time = 50+ rand()%151;
     struct timespec ts = {0,1000000*random_time};
-    // sprawdzamy czy wylosowane prawdopodobienstwo jest lepsze niz podane
-    int probability = 1+rand()&101;
-    if(probability>=p) should_be_ill = 1; // mowimy ze mozemy zachorowac
 
-    //handlowanie siguser1
+    sigset_t mask,oldmask;
+    sigemptyset(&mask); //czyscimy
+    sigaddset(&mask,SIGUSR1); // blokujemy SIGUSER1
+    // SIGBLOCK -> sygnaly z maski beda dodane do blokowanych
+    // SIGUNBLOCK -> sygnaly z maski beda usuniete z blokowanych
+    // SIGSETMASK -> nadpisz cala maske
+    sigprocmask(SIG_BLOCK,&mask,&oldmask); // ustawiamy blokowanie na SIGUSR1
     memset(&sa,0,sizeof(sa));
-    sa.sa_handler = siguser1_handler; // jesli mozemy byc chorzy i ktos w nas strzeli to chorujemy
-    if(sigaction(SIGUSR1,&sa,NULL)<0)
-        ERR("sigaction");
-    while(parent_running){
-        nanosleep(&ts,NULL);
-        
+    sa.sa_sigaction = siguser1_handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigaction(SIGUSR1,&sa,0);
+    while(!ill){
+        sigsuspend(&oldmask);
     }
+    struct timespec nowa = {k,0};
+    while(nanosleep(&nowa,NULL)>0){
+        nanosleep(&ts,NULL);
+        kill(0,SIGUSR1);
+    }
+    
 }
 
 int main(int argc,char** argv){
