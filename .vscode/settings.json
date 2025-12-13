@@ -4,7 +4,7 @@
         "dirent.h": "c",
         "stdio.h": "c"
     },
-    "editor.inlineSuggest.enabled": false,
-    "editor.suggest.preview": false,
-    "intellicode.completionsEnabled": false
+    "editor.inlineSuggest.enabled": true,
+    "editor.suggest.preview": true,
+    "intellicode.completionsEnabled": true
 }
