@@ -13,7 +13,6 @@ void list_all(struct wezel *head) {
     }
     printf("----------------------\n");
 }
-
 // POPRAWKA: Przekazujemy adres wskaźnika head (**head), żeby móc zmienić początek listy
 void delete_node(struct wezel **head_ref, char *source_path, char *destination_path) {
     struct wezel *tmp = *head_ref;
@@ -67,15 +66,25 @@ int tokenize(char *line, char *args[]) {
     }
     return arg_count;
 }
-
+void handler(int sig){
+    running = 0;
+}
 int main() {
     char line[MAXLINE];
     char *args[MAXARGS];
     struct wezel *head = NULL;
 
     printf("Start programu. Komendy: add <src> <dst1>..., list, end <src> <dst>, exit\n");
-
-    while (1) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = handler;
+    if (sigaction(SIGINT, &sa, NULL) < 0) {
+        ERR("sigaction");
+    }
+    if (sigaction(SIGTERM, &sa, NULL) < 0) {
+        ERR("sigaction");
+    }
+    while (running) {
         printf("> ");
         fflush(stdout); 
 
@@ -132,7 +141,8 @@ int main() {
         }
         sleep(1);
     }
-    
+    kill(0, SIGTERM);
+ 
     // Czekamy na wszystkie dzieci przy wyjściu
     while(wait(NULL) > 0);
     return EXIT_SUCCESS;
