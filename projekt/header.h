@@ -42,16 +42,21 @@ struct wezel {
 };
 
 // Mapa do przechowywania par: deskryptor -> ścieżka
-struct WatchMap {
+struct Watch {
     int wd;
     char src[PATH_MAX];
     char dst[PATH_MAX]; 
 };
+struct WatchMap {
+    struct Watch watch_map[MAX_WATCHES];
+    int watch_count;
+};
 
 void file_watcher_reccursive(char *source_path, char *destination_path);
 void directory_copy(char *source, char *target);
-ssize_t bulk_write(int fd, char *buf, size_t count);
+ssize_t bulk_write(int fd, const char *buf, size_t count);
 void handle_link(char *source, char *destination);
 void file_copy(char *source, char *destination);
 void add_watches_recursive(int notify_fd, char *source_path, char *destination_path);
+void add_watch_to_map(int wd, const char *src, const char *dst);
 #endif

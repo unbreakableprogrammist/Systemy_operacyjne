@@ -23,19 +23,19 @@ void delete_node(struct wezel **head_ref, char *source_path, char *destination_p
         // Sprawdzamy czy ścieżki się zgadzają
         if (strcmp(tmp->source_path, source_path) == 0 && strcmp(tmp->destination_path, destination_path) == 0) {
             
-            // 1. Najważniejsze: ZABIJAMY PROCES
+            // Najważniejsze: ZABIJAMY PROCES
             printf("Zatrzymywanie PID %d...\n", tmp->pid);
             kill(tmp->pid, SIGTERM);
             waitpid(tmp->pid, NULL, 0); // Czekamy aż na pewno zniknie
 
-            // 2. Przepinamy wskaźniki
+            // Przepinamy wskaźniki
             if (prev == NULL) {
                 *head_ref = tmp->next; // Usuwamy pierwszy element
             } else {
                 prev->next = tmp->next; // Usuwamy ze środka/końca
             }
 
-            // 3. Zwalniamy pamięć
+            // Zwalniamy pamięć
             free(tmp);
             return;
         }
@@ -110,7 +110,6 @@ int main() {
                 strncpy(nowy->source_path, args[1], MAX_PATH-1); nowy->source_path[MAX_PATH-1] = 0;
                 strncpy(nowy->destination_path, args[i], MAX_PATH-1); nowy->destination_path[MAX_PATH-1] = 0;
 
-                // POPRAWKA: Wstawianie na początek listy (zawsze działa)
                 nowy->next = head;
                 head = nowy;
                 
@@ -121,7 +120,6 @@ int main() {
         } 
         else if (strcmp(args[0], "end") == 0) {
             if (argc < 3) { printf("Podaj źródło i cel.\n"); continue; }
-            // POPRAWKA: Przekazujemy adres wskaźnika head (&head)
             delete_node(&head, args[1], args[2]);
         }else if(strcmp(args[0],"help")==0){
             printf("\n--- Dostępne komendy ---\n");
