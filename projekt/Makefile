@@ -14,7 +14,7 @@ TARGET = sop_backup
 # Lista plików obiektowych. 
 # TERAZ: masz tylko main.o
 # PÓŹNIEJ: dopiszesz tutaj: main.o backup.o utils.o
-OBJS = main.o 
+OBJS = main.o file_watcher_reccursive.o 
 
 # --- REGUŁY BUDOWANIA ---
 
