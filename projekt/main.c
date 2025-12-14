@@ -1,7 +1,5 @@
 #include "header.h"
 
-// ZMIANA: static sprawia, że ta zmienna jest widoczna tylko w main.c
-// Rozwiązuje to konflikt z plikiem file_watcher_reccursive.c
 static volatile sig_atomic_t running = 1;
 
 // Funkcja usuwająca '\n' z końca
@@ -69,6 +67,43 @@ void handler(int sig){
     (void)sig; // Unused warning fix
     running = 0;
 }
+// Funkcja sprawdza, czy 'child' jest podkatalogiem 'parent'
+// Zwraca 1 jeśli JEST PĘTLA (BŁĄD), 0 jeśli jest BEZPIECZNIE
+int is_subpath(const char *parent, const char *child) {
+    char real_parent[PATH_MAX];
+    char real_child[PATH_MAX];
+
+    // 1. Zamień obie ścieżki na pełne ścieżki bezwzględne
+    if (realpath(parent, real_parent) == NULL) {
+        // Jeśli źródło nie istnieje, to i tak zaraz wywali błąd, więc tu bezpiecznie
+        return 0; 
+    }
+
+    // Jeśli cel nie istnieje (jeszcze go nie stworzyliśmy), realpath może zwrócić błąd.
+    // Wtedy sprawdzamy folder nadrzędny celu, albo po prostu puszczamy (ryzykowne, ale proste).
+    // Dla uproszczenia: jeśli cel istnieje, sprawdzamy. Jeśli nie - zakładamy, że użytkownik wie co robi
+    // (żeby to zrobić idealnie, trzeba by analizować tekst ścieżki, co jest trudne).
+    if (realpath(child, real_child) == NULL) {
+        return 0; 
+    }
+
+    // 2. Sprawdź czy są identyczne (Backup do tego samego folderu)
+    if (strcmp(real_parent, real_child) == 0) {
+        return 1; // Błąd: źródło == cel
+    }
+
+    // 3. Sprawdź czy child zaczyna się od parent (np. Parent: /home/A, Child: /home/A/B)
+    size_t len = strlen(real_parent);
+    if (strncmp(real_parent, real_child, len) == 0) {
+        // Upewnij się, że to faktycznie podkatalog, a nie podobna nazwa
+        // np. /home/test vs /home/test2 (to nie są podkatalogi)
+        if (real_child[len] == '/') {
+            return 1; // Błąd: cel jest wewnątrz źródła!
+        }
+    }
+
+    return 0; // Bezpiecznie
+}
 
 int main() {
     char line[MAXLINE];
@@ -107,6 +142,11 @@ int main() {
             if (argc < 3) { printf("Za mało argumentów.\n"); continue; }
 
             for (int i = 2; i < argc; i++) {
+                if (is_subpath(args[1], args[i])) {
+                    printf("BŁĄD: Cel '%s' znajduje się wewnątrz źródła '%s'!\n", args[i], args[1]);
+                    printf("To spowodowałoby pętlę nieskończoną. Pomijam ten cel.\n");
+                    continue; // Przejdź do następnego celu, nie rób fork
+                }
                 pid_t pid = fork();
                 if (pid == -1) { perror("fork"); continue; }
                 
