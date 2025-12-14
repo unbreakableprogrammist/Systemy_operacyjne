@@ -1,5 +1,9 @@
 #include "header.h"
 
+// ZMIANA: static sprawia, że ta zmienna jest widoczna tylko w main.c
+// Rozwiązuje to konflikt z plikiem file_watcher_reccursive.c
+static volatile sig_atomic_t running = 1;
+
 // Funkcja usuwająca '\n' z końca
 void remove_newline(char *line) { line[strcspn(line, "\n")] = 0; }
 
@@ -13,28 +17,25 @@ void list_all(struct wezel *head) {
     }
     printf("----------------------\n");
 }
-// POPRAWKA: Przekazujemy adres wskaźnika head (**head), żeby móc zmienić początek listy
+
+// Przekazujemy adres wskaźnika head (**head)
 void delete_node(struct wezel **head_ref, char *source_path, char *destination_path) {
     struct wezel *tmp = *head_ref;
     struct wezel *prev = NULL;
 
     while (tmp != NULL) {
-        // Sprawdzamy czy ścieżki się zgadzają
         if (strcmp(tmp->source_path, source_path) == 0 && strcmp(tmp->destination_path, destination_path) == 0) {
             
-            // Najważniejsze: ZABIJAMY PROCES
             printf("Zatrzymywanie PID %d...\n", tmp->pid);
             kill(tmp->pid, SIGTERM);
-            waitpid(tmp->pid, NULL, 0); // Czekamy aż na pewno zniknie
+            waitpid(tmp->pid, NULL, 0); 
 
-            // Przepinamy wskaźniki
             if (prev == NULL) {
-                *head_ref = tmp->next; // Usuwamy pierwszy element
+                *head_ref = tmp->next; 
             } else {
-                prev->next = tmp->next; // Usuwamy ze środka/końca
+                prev->next = tmp->next; 
             }
 
-            // Zwalniamy pamięć
             free(tmp);
             return;
         }
@@ -44,10 +45,7 @@ void delete_node(struct wezel **head_ref, char *source_path, char *destination_p
     printf("Nie znaleziono takiego zadania.\n");
 }
 
-// (Funkcja tokenize pozostaje bez zmian - jest OK)
 int tokenize(char *line, char *args[]) {
-    // ... (Twoja implementacja tokenize) ...
-    // Wklej tutaj swoją funkcję tokenize
     int arg_count = 0;
     int in_quote = 0;
     char *src = line;
@@ -66,49 +64,57 @@ int tokenize(char *line, char *args[]) {
     }
     return arg_count;
 }
+
 void handler(int sig){
+    (void)sig; // Unused warning fix
     running = 0;
 }
+
 int main() {
     char line[MAXLINE];
     char *args[MAXARGS];
     struct wezel *head = NULL;
 
     printf("Start programu. Komendy: add <src> <dst1>..., list, end <src> <dst>, exit\n");
+    
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = handler;
-    if (sigaction(SIGINT, &sa, NULL) < 0) {
-        ERR("sigaction");
-    }
-    if (sigaction(SIGTERM, &sa, NULL) < 0) {
-        ERR("sigaction");
-    }
+    // Ważne: restartujemy syscalls (jak read), żeby fgets nie zwracał błędu przy byle sygnale, 
+    // chyba że chcemy przerwać. Tu zostawiamy standardowo.
+    if (sigaction(SIGINT, &sa, NULL) < 0) ERR("sigaction");
+    if (sigaction(SIGTERM, &sa, NULL) < 0) ERR("sigaction");
+
     while (running) {
         printf("> ");
         fflush(stdout); 
 
-        if (fgets(line, sizeof(line), stdin) == NULL) break;
+        if (fgets(line, sizeof(line), stdin) == NULL) {
+            if (errno == EINTR) continue;
+            break;
+        }
         remove_newline(line);
 
         int argc = tokenize(line, args);
         if (argc == 0) continue;
 
         if (strcmp(args[0], "exit") == 0) {
-            // Tu przydałaby się pętla czyszcząca całą listę i zabijająca dzieci
+            running = 0;
             break; 
         }
 
         if (strcmp(args[0], "add") == 0) {
             if (argc < 3) { printf("Za mało argumentów.\n"); continue; }
 
-            // Iterujemy po celach
             for (int i = 2; i < argc; i++) {
                 pid_t pid = fork();
-                if (pid == -1) { ERR("fork"); }
+                if (pid == -1) { perror("fork"); continue; }
                 
                 if (pid == 0) { 
                     // DZIECKO
+                    // Resetujemy obsługę sygnałów w dziecku na domyślną, 
+                    // lub ustawiamy własną (zdefiniowaną w file_watcher).
+                    // Tutaj file_watcher_reccursive ustawia swoje handlery.
                     file_watcher_reccursive(args[1], args[i]);
                     exit(EXIT_SUCCESS);
                 }
@@ -121,7 +127,6 @@ int main() {
 
                 nowy->next = head;
                 head = nowy;
-                
             }
         } 
         else if (strcmp(args[0], "list") == 0) {
@@ -130,20 +135,25 @@ int main() {
         else if (strcmp(args[0], "end") == 0) {
             if (argc < 3) { printf("Podaj źródło i cel.\n"); continue; }
             delete_node(&head, args[1], args[2]);
-        }else if(strcmp(args[0],"help")==0){
+        }
+        else if(strcmp(args[0],"help")==0){
             printf("\n--- Dostępne komendy ---\n");
-            printf("  add <zrodlo> <cel> [cel2 ...]  - Uruchamia backup folderu 'zrodlo' do folderu 'cel' (można podać wiele celów)\n");
-            printf("  list                           - Wyświetla listę wszystkich aktywnych procesów backupu (wraz z PID)\n");
-            printf("  end <cel>                      - Zatrzymuje proces backupu zapisujący do podanego folderu 'cel'\n");
-            printf("  help                           - Wyświetla ten ekran pomocy\n");
-            printf("  exit                           - Zamyka program i zatrzymuje wszystkie aktywne backupy\n");
+            printf("  add <zrodlo> <cel> [cel2 ...]  - Uruchamia backup\n");
+            printf("  list                           - Lista procesów\n");
+            printf("  end <zrodlo> <cel>             - Zatrzymuje proces\n");
+            printf("  exit                           - Wyjście\n");
             printf("------------------------\n");  
         }
         sleep(1);
     }
-    kill(0, SIGTERM);
+    
+    // Sprzątanie
+    struct wezel *tmp = head;
+    while(tmp != NULL) {
+        kill(tmp->pid, SIGTERM);
+        tmp = tmp->next;
+    }
  
-    // Czekamy na wszystkie dzieci przy wyjściu
     while(wait(NULL) > 0);
     return EXIT_SUCCESS;
 }

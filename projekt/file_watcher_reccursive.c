@@ -1,8 +1,9 @@
 #include "header.h"
-#include <fcntl.h> // Potrzebne do O_CREAT, O_RDONLY itp.
+#include <fcntl.h> 
 #include <errno.h>
 
-
+// ZMIANA: static rozwiązuje problem "multiple definition"
+static volatile sig_atomic_t running = 1;
 struct WatchMap map = {0};
 
 ssize_t bulk_write(int fd, const char *buf, size_t count) {
@@ -18,16 +19,14 @@ ssize_t bulk_write(int fd, const char *buf, size_t count) {
         len  += c;
         count -= c;
     }
-
     return len;
 }
-
 
 void add_watch_to_map(int wd, const char *src, const char *dst) {
     if (map.watch_count < MAX_WATCHES) {
         map.watch_map[map.watch_count].wd = wd;
-        strncpy(map.watch_map[map.watch_count].src, src, PATH_MAX);
-        strncpy(map.watch_map[map.watch_count].dst, dst, PATH_MAX);
+        strncpy(map.watch_map[map.watch_count].src, src, PATH_MAX-1);
+        strncpy(map.watch_map[map.watch_count].dst, dst, PATH_MAX-1);
         map.watch_count++;
     } else {
         printf("[CHILD %d] Przekroczono maksymalna liczbe watchow\n", getpid());
@@ -37,17 +36,14 @@ void add_watch_to_map(int wd, const char *src, const char *dst) {
 void file_copy(char *source, char *destination){
     int src_fd = open(source, O_RDONLY);
     if (src_fd < 0) {
-        // Jeśli nie możemy otworzyć pliku źródłowego (np. brak praw),
-        // wypisujemy błąd i wracamy, ale NIE zabijamy procesu.
         perror("open source failed");
         return; 
     }
 
-    // Otwieramy plik docelowy
     int dst_fd = open(destination, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (dst_fd < 0) {
         perror("open destination failed");
-        close(src_fd); // Musimy zamknąć źródło przed wyjściem!
+        close(src_fd); 
         return;
     }
 
@@ -56,7 +52,7 @@ void file_copy(char *source, char *destination){
     while ((n = TEMP_FAILURE_RETRY(read(src_fd, buffer, sizeof(buffer)))) > 0) {
         if (bulk_write(dst_fd, buffer, n) < 0) {
             perror("bulk_write failed");
-            break; // Przerywamy pętlę, ale pozwalamy na sprzątanie (close)
+            break; 
         }
     }
     
@@ -68,18 +64,14 @@ void file_copy(char *source, char *destination){
 }
 
 void handle_link(char* source, char* destination) {
-    // Na razie puste, zgodnie z Twoim kodem
     (void)source; (void)destination;
 }
 
 void directory_copy(char *source_path, char *destination_path) {
-    // 1. Upewnij się, że główny katalog docelowy istnieje
     struct stat st_dest;
     if (stat(destination_path, &st_dest) == -1) {
         if (mkdir(destination_path, 0755) < 0 && errno != EEXIST) {
             perror("mkdir root destination failed");
-            // Jeśli nie możemy stworzyć głównego folderu celu, 
-            // to nie ma sensu kopiować jego zawartości.
             return; 
         }
     }
@@ -87,7 +79,7 @@ void directory_copy(char *source_path, char *destination_path) {
     DIR *dir = opendir(source_path);
     if (!dir) {
         perror("opendir failed");
-        return; // Nie zabijamy procesu, po prostu pomijamy ten katalog
+        return; 
     }
 
     struct dirent *entry;
@@ -98,14 +90,12 @@ void directory_copy(char *source_path, char *destination_path) {
 
         char next_src[PATH_MAX];
         char next_dst[PATH_MAX];
-        // Używam PATH_MAX dla spójności
         snprintf(next_src, PATH_MAX, "%s/%s", source_path, entry->d_name);
         snprintf(next_dst, PATH_MAX, "%s/%s", destination_path, entry->d_name);
         
         struct stat st;
         if (lstat(next_src, &st) == 0) {
             if (S_ISDIR(st.st_mode)) {
-                // Jeśli mkdir się nie uda, wypisz błąd i przejdź do następnego pliku (continue)
                 if (mkdir(next_dst, st.st_mode & 0777) < 0 && errno != EEXIST) {
                     perror("mkdir recursive failed");
                     continue; 
@@ -118,7 +108,6 @@ void directory_copy(char *source_path, char *destination_path) {
             }
         } else {
             perror("lstat failed");
-            // Nie ERR, po prostu pomijamy ten plik
         }
     }
     closedir(dir);
@@ -128,8 +117,6 @@ void add_watches_recursive(int notify_fd, char *source_path, char *destination_p
     int wd = inotify_add_watch(notify_fd, source_path, IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_TO | IN_MOVED_FROM | IN_DELETE_SELF);
     
     if (wd < 0) {
-        // Jeśli nie udało się dodać watcha, logujemy to, ale próbujemy wejść głębiej
-        // (może brak praw do folderu głównego, ale do podfolderu już są?)
         perror("inotify_add_watch failed");
     } else {
         add_watch_to_map(wd, source_path, destination_path);
@@ -157,12 +144,11 @@ void add_watches_recursive(int notify_fd, char *source_path, char *destination_p
             if (S_ISDIR(st.st_mode)) {
                 add_watches_recursive(notify_fd, next_src, next_dst);
             }
-        } else {
-            perror("lstat in recursive scan failed");
         }
     }
     closedir(dir);
 }
+
 struct Watch* get_watch_by_wd(int wd) {
     for (int i = 0; i < map.watch_count; i++) {
         if (map.watch_map[i].wd == wd) {
@@ -171,8 +157,8 @@ struct Watch* get_watch_by_wd(int wd) {
     }
     return NULL;
 }
+
 void directory_delete(const char *path) {
-    // Proste usuwanie rekurencyjne (rm -rf)
     DIR *dir = opendir(path);
     if (!dir) return;
 
@@ -193,20 +179,27 @@ void directory_delete(const char *path) {
     rmdir(path);
     printf("[CHILD %d] Usunięto katalog: %s\n", getpid(), path);
 }
+
 void file_delete(const char *path) {
     unlink(path);
     printf("[CHILD %d] Usunięto plik: %s\n", getpid(), path);
 }
+
 void remove_watch_from_map(int wd) {
     for (int i = 0; i < map.watch_count; i++) {
         if (map.watch_map[i].wd == wd) {
-            // Nadpisz usuwany element ostatnim elementem tablicy
             map.watch_map[i] = map.watch_map[map.watch_count - 1];
             map.watch_count--;
             return;
         }
     }
 }
+
+void child_handler(int sig) {
+    (void)sig;
+    running = 0;
+}
+
 void file_watcher_reccursive(char *source_path, char *destination_path) {
     
     printf("[CHILD %d] Synchronizacja początkowa...\n", getpid());
@@ -215,54 +208,43 @@ void file_watcher_reccursive(char *source_path, char *destination_path) {
     
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = handler;
-    if (sigaction(SIGINT, &sa, NULL) < 0) {
-        ERR("sigaction");
-    }
-    if (sigaction(SIGTERM, &sa, NULL) < 0) {
-        ERR("sigaction");
-    }
+    sa.sa_handler = child_handler; // Używamy lokalnego handlera dla dziecka
+    if (sigaction(SIGINT, &sa, NULL) < 0) ERR("sigaction");
+    if (sigaction(SIGTERM, &sa, NULL) < 0) ERR("sigaction");
 
     int notify_fd = inotify_init();
-    if (notify_fd < 0) {
-        ERR("inotify_init");
-    }
+    if (notify_fd < 0) ERR("inotify_init");
+    
     add_watches_recursive(notify_fd, source_path, destination_path);
-    // bufor na inotify_event
+    
     char buffer[4096 * 4];
     while (running) {
         ssize_t len = read(notify_fd, buffer, sizeof(buffer));
-        if(len<0){
-            if(errno == EINTR){ // jesli funkcja zostala przerwana przez sygnal to dokoncz 
+        if(len < 0){
+            if(errno == EINTR){ 
                 continue;
             }
-            ERR("read");
+            // read może zwrócić błąd przy zamykaniu, więc nie zawsze ERR jest konieczne
+            perror("read"); 
+            break;
         }
         ssize_t i = 0;
         while(i < len){
-            // struct inotify_event {
-            //     int      wd;        // watch descriptor (od inotify_add_watch)
-            //     uint32_t mask;      // typ zdarzenia (IN_CREATE, IN_DELETE, itd.)
-            //     uint32_t cookie;    // do łączenia eventów MOVE
-            //     uint32_t len;       // długość pola name[]
-            //     char     name[];    // nazwa pliku (zmienna długość!)
-            // };
             struct inotify_event *event = (struct inotify_event *)&buffer[i];
             if(event->len > 0){
                 struct Watch *w = get_watch_by_wd(event->wd);
-                if(w==NULL){
-                    continue;
-                }else{
+                if(w != NULL){
                     char full_src[PATH_MAX];
                     char full_dst[PATH_MAX];
 
                     snprintf(full_src, PATH_MAX, "%s/%s", w->src, event->name);
                     snprintf(full_dst, PATH_MAX, "%s/%s", w->dst, event->name);
+                    
                     if (event->mask & IN_ISDIR) {
                         if (event->mask & IN_CREATE || event->mask & IN_MOVED_TO) {
                             directory_copy(full_src, full_dst);
                             add_watches_recursive(notify_fd, full_src, full_dst);
-                        }else if(event->mask & IN_DELETE || event->mask & IN_MOVED_FROM){
+                        } else if(event->mask & IN_DELETE || event->mask & IN_MOVED_FROM){
                             directory_delete(full_dst);
                         }
                     } else {
@@ -280,5 +262,6 @@ void file_watcher_reccursive(char *source_path, char *destination_path) {
             i += sizeof(struct inotify_event) + event->len;
         }
     }
-
+    close(notify_fd);
+    printf("[CHILD %d] Koniec pracy.\n", getpid());
 }

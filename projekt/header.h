@@ -51,7 +51,6 @@ struct WatchMap {
     struct Watch watch_map[MAX_WATCHES];
     int watch_count;
 };
-volatile sig_atomic_t running = 1;
 
 void file_watcher_reccursive(char *source_path, char *destination_path);
 void directory_copy(char *source, char *target);
