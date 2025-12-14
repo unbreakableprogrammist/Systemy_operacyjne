@@ -47,6 +47,7 @@ struct wezel {
 // Mapa do przechowywania par: deskryptor -> ścieżka
 struct WatchMap {
     int wd;
-    char path[PATH_MAX];
+    char src[PATH_MAX];
+    char dst[PATH_MAX]; 
 };
 #endif
