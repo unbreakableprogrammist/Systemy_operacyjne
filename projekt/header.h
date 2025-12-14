@@ -35,8 +35,6 @@
    kill(0, SIGKILL), exit(EXIT_FAILURE))
 
 
-void file_watcher_reccursive(char *source_path, char *destination_path);
-
 struct wezel {
   pid_t pid;
   char source_path[MAX_PATH];
@@ -50,4 +48,7 @@ struct WatchMap {
     char src[PATH_MAX];
     char dst[PATH_MAX]; 
 };
+
+void file_watcher_reccursive(char *source_path, char *destination_path);
+void directory_copy(char *source, char *target);
 #endif
