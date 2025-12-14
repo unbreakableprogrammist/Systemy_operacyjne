@@ -14,7 +14,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <string.h>
 #include <sys/inotify.h>
 
 // Bufor na ścieżki - zostawiamy systemowy standard
@@ -51,4 +50,8 @@ struct WatchMap {
 
 void file_watcher_reccursive(char *source_path, char *destination_path);
 void directory_copy(char *source, char *target);
+ssize_t bulk_write(int fd, char *buf, size_t count);
+void handle_link(char *source, char *destination);
+void file_copy(char *source, char *destination);
+void add_watches_recursive(int notify_fd, char *source_path, char *destination_path);
 #endif

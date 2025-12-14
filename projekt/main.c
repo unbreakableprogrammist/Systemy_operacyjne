@@ -77,7 +77,7 @@ int main() {
 
     while (1) {
         printf("> ");
-        fflush(stdout); // Ważne!
+        fflush(stdout); 
 
         if (fgets(line, sizeof(line), stdin) == NULL) break;
         remove_newline(line);
