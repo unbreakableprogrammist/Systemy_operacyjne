@@ -123,6 +123,8 @@ int main() {
             if (argc < 3) { printf("Podaj źródło i cel.\n"); continue; }
             // POPRAWKA: Przekazujemy adres wskaźnika head (&head)
             delete_node(&head, args[1], args[2]);
+        }else if(strcmp(args[0],"help")==0){
+            
         }
         sleep(1);
     }
