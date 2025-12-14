@@ -124,7 +124,13 @@ int main() {
             // POPRAWKA: Przekazujemy adres wskaźnika head (&head)
             delete_node(&head, args[1], args[2]);
         }else if(strcmp(args[0],"help")==0){
-            
+            printf("\n--- Dostępne komendy ---\n");
+            printf("  add <zrodlo> <cel> [cel2 ...]  - Uruchamia backup folderu 'zrodlo' do folderu 'cel' (można podać wiele celów)\n");
+            printf("  list                           - Wyświetla listę wszystkich aktywnych procesów backupu (wraz z PID)\n");
+            printf("  end <cel>                      - Zatrzymuje proces backupu zapisujący do podanego folderu 'cel'\n");
+            printf("  help                           - Wyświetla ten ekran pomocy\n");
+            printf("  exit                           - Zamyka program i zatrzymuje wszystkie aktywne backupy\n");
+            printf("------------------------\n");  
         }
         sleep(1);
     }
