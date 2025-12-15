@@ -27,22 +27,25 @@ void delete_node(struct wezel **head_ref, char *source_path, char *destination_p
             printf("Zatrzymywanie PID %d...\n", tmp->pid);
             // zabijamy proces o tym pid
             kill(tmp->pid, SIGTERM);
-            // czekamy az proces zterminate
-            waitpid(tmp->pid, NULL, 0);
+            if(waitpid(tmp->pid, NULL, 0)<0){
+                if (errno == EINTR) continue;       
+                perror("waitpid");
+                return;
+            }
             // usuwamy wezel z listy
             if (prev == NULL) {
                 *head_ref = tmp->next;
             } else {
                 prev->next = tmp->next;
             }
-
             free(tmp);
-            return;
+            return EXIT_SUCCESS;
         }
         prev = tmp;
         tmp = tmp->next;
     }
     printf("Nie znaleziono takiego zadania.\n");
+    return;
 }
 
 int tokenize(char *line, char *args[]) {
@@ -52,54 +55,53 @@ int tokenize(char *line, char *args[]) {
     char *src = line;
     char *dst = line;
     memset(args, 0, MAXARGS * sizeof(char *));
-    while (*src && arg_count < MAXARGS) {
-        while (*src == ' ' && !in_quote)
+    while (*src && arg_count < MAXARGS) { // dopoki src jest rozny od \0 i arg_count jest mniejszy od MAXARGS
+        while (*src == ' ' && !in_quote) // omijamy nadmairowe spacje i nie wewnątrz cudzysłowia
             src++;
-        if (*src == '\0')
+        if (*src == '\0') // jesli doszlismy do konca linii to konczymy
             break;
-        args[arg_count++] = dst;
-        while (*src) {
+        args[arg_count++] = dst; // przypisujemy adres do tablicy argumentow
+        while (*src) { // dopoki src jest rozny od \0
             if (*src == '"') {
-                in_quote = !in_quote;
+                in_quote = !in_quote; // zmieniamy flagę
                 src++;
-            } else if (*src == ' ' && !in_quote) {
+            } else if (*src == ' ' && !in_quote) { // jesli src jest spacja i nie wewnątrz cudzysłowia
                 src++;
                 break;
             } else {
-                *dst++ = *src++;
+                *dst++ = *src++; // przepisujemy znak do dst
             }
         }
-        *dst++ = '\0';
+        *dst++ = '\0'; // przepisujemy \0 do dst
     }
     return arg_count;
 }
 
 void handler(int sig) { running = 0; }
-// Funkcja sprawdza, czy 'child' jest podkatalogiem 'parent'
-// Zwraca 1 jeśli JEST PĘTLA (BŁĄD), 0 jeśli jest BEZPIECZNIE
-// Zwraca 1 (BŁĄD/PĘTLA), 0 (OK)
-// Funkcja sprawdza, czy 'child' jest podkatalogiem 'parent'
-// Wersja v2: Poprawnie obsługuje ".." nawet jeśli cel nie istnieje
+
 int is_subpath(const char *parent, const char *child) {
-    char real_parent[PATH_MAX];
-    char real_child[PATH_MAX];
+    char real_parent[PATH_MAX]; //cala sciezka zrodlowa
+    char real_child[PATH_MAX]; //cala sciezka celu
 
-    // 1. Rozwiąż ścieżkę ŹRÓDŁA
-    if (realpath(parent, real_parent) == NULL) return 0; // Źródło nie istnieje -> błąd wyjdzie później
+    
+    if (realpath(parent, real_parent) == NULL){ // zrodlo musi na pewno istniec , inaczej blad programu 
+        perror("realpath");
+        return EXIT_FAILURE;
+    } 
 
-    // 2. Próbujemy rozwiązać ścieżkę CELU
-    if (realpath(child, real_child) == NULL) {
+    //Próbujemy rozwiązać ścieżkę docelowego katalogu
+    if (realpath(child, real_child) == NULL) { // jesli cel nie istnieje 
         // Cel nie istnieje. Musimy rozwiązać jego katalog nadrzędny ("parent directory" celu).
         // Np. dla child="../dst1", parent_part="..", name_part="dst1"
-        
+        // przepisujemy do temp child taka sciezke jaka dostalismy
         char temp_child[PATH_MAX];
         strncpy(temp_child, child, PATH_MAX - 1);
         temp_child[PATH_MAX - 1] = '\0';
-
+        // tworzymy tablice do przechowywania rodzica i nazwy
         char parent_part[PATH_MAX];
         char name_part[PATH_MAX];
         
-        // Znajdź ostatni ukośnik
+        // Znajdujemy ostatni ukośnik
         char *last_slash = strrchr(temp_child, '/');
 
         if (last_slash == NULL) {
@@ -108,42 +110,52 @@ int is_subpath(const char *parent, const char *child) {
             strcpy(name_part, temp_child);
         } else {
             // Jest ukośnik, np. "../dst1" lub "/tmp/dst1"
-            if (last_slash == temp_child) { // Przypadek "/dst1"
+            if (last_slash == temp_child) { // Przypadek "/dst1" , czyli przypadek z rootem
                 strcpy(parent_part, "/");
             } else {
-                *last_slash = '\0'; // Ucinamy string w miejscu slesza
-                strcpy(parent_part, temp_child); // To co przed sleszem
+                *last_slash = '\0'; // Ucinamy string w miejscu /
+                strcpy(parent_part, temp_child); // To co przed /
             }
-            strcpy(name_part, last_slash + 1); // To co po sleszu
+            strcpy(name_part, last_slash + 1); // To co po /
         }
 
-        // Teraz robimy realpath na RODZICU celu (on powinien istnieć)
+        // Teraz robimy realpath na RODZICU celu 
         char real_parent_part[PATH_MAX];
-        if (realpath(parent_part, real_parent_part) == NULL) {
-            // Jeśli nawet folder nadrzędny celu nie istnieje, to mkdir i tak by się nie udał.
-            // Zakładamy, że bezpiecznie.
-            return 0; 
+        if (realpath(parent_part, real_parent_part) == NULL) { // oznacza folder nie istnieje -> mozemy go stworzyc
+           return 0;
         }
-
         // Sklejamy rozwiązaną ścieżkę rodzica z nazwą folderu
         snprintf(real_child, PATH_MAX, "%s/%s", real_parent_part, name_part);
     }
 
-    // 3. PORÓWNANIE
+
     // Sprawdź czy to ten sam katalog
     if (strcmp(real_parent, real_child) == 0) return 1;
-
     // Sprawdź czy real_child zaczyna się od real_parent
     size_t len = strlen(real_parent);
     if (strncmp(real_parent, real_child, len) == 0) {
         // Upewnij się, że to podkatalog (następny znak to '/' lub koniec)
         // Chroni przed: /home/test vs /home/test2
         if (real_child[len] == '/' || real_child[len] == '\0') {
-            return 1; // BŁĄD: Pętla!
+            return 1; // błąd
         }
     }
 
     return 0; // Bezpiecznie
+}
+
+// Funkcja sprawdza, czy para <zrodlo> <cel> już istnieje w liście aktywnych procesów.
+// Zwraca 1 (DUPLIKAT), 0 (OK)
+int is_duplicate(struct wezel *head, const char *src, const char *dst) {
+    struct wezel *tmp = head;
+    while (tmp != NULL) {
+        // Porównujemy napisy. Jeśli oba są identyczne jak w nowym poleceniu -> BŁĄD
+        if (strcmp(tmp->source_path, src) == 0 && strcmp(tmp->destination_path, dst) == 0) {
+            return 1; 
+        }
+        tmp = tmp->next;
+    }
+    return 0;
 }
 
 int main() {
@@ -199,6 +211,10 @@ int main() {
                 if (is_subpath(args[1], args[i])) {
                     printf("BŁĄD: Cel '%s' znajduje się wewnątrz źródła '%s'!\n", args[i],args[1]);
                     continue;
+                }
+                if (is_duplicate(head, args[1], args[i])) {
+                    printf("BŁĄD: Kopia '%s' -> '%s' jest już aktywna!\n", args[1], args[i]);
+                    continue; // Pomijamy ten cel, nie robimy fork
                 }
                 pid_t pid = fork(); // dla kazdego celu tworzy nowy proces
                 if (pid == -1) { // jesli blad wypisz blad i kontynuuj

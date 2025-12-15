@@ -3,7 +3,24 @@
 // ZMIANA: static rozwiązuje problem "multiple definition"
 static volatile sig_atomic_t running = 1;
 struct WatchMap map = {0};
+// Sprawdza czy katalog jest pusty (ignoruje "." i "..")
+// Zwraca 1 (PUSTY - OK), 0 (NIEPUSTY - BŁĄD), -1 (Nie istnieje/Błąd dostępu)
+int is_dir_empty(const char *path) {
+    DIR *dir = opendir(path);
+    if (!dir) return -1; // Pewnie nie istnieje, więc jest "czysty"
 
+    struct dirent *entry;
+    int has_files = 0;
+    while ((entry = readdir(dir)) != NULL) {
+        // Jeśli znajdziemy cokolwiek innego niż kropki, to katalog nie jest pusty
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+            has_files = 1;
+            break;
+        }
+    }
+    closedir(dir);
+    return (has_files == 0); // Zwraca 1 jeśli pusty, 0 jeśli znaleziono pliki
+}
 ssize_t bulk_write(int fd, const char *buf, size_t count) {
   ssize_t c;
   ssize_t len = 0;
