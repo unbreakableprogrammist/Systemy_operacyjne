@@ -372,9 +372,17 @@ void file_watcher_reccursive(char *source_path, char *destination_path) {
       struct inotify_event *event =
           (struct inotify_event *)&buffer[i]; // bierzemy jedno wydarzenie z
                                               // bufora ( moze byc tam wiele )
+      struct Watch *w = get_watch_by_wd(event->wd);
+      if(event->mask & IN_DELETE_SELF && strcmp(w->src,source_path)==0){
+            directory_delete(destination_path);
+            running = 0;
+            break;
+      }
       if (event->len > 0) {
-        struct Watch *w = get_watch_by_wd(event->wd);
+      
         if (w != NULL) {
+
+          
           char full_src[PATH_MAX];
           char full_dst[PATH_MAX];
 
