@@ -99,7 +99,15 @@ void handle_link(char *source, char *destination,char *root_src,char *root_dst) 
             return;
         }     
     }
-    // te
+    // usuwamy stary link jesli istnieje
+    if (unlink(destination) < 0 && errno != ENOENT) {
+        perror("unlink destination failed");
+    }
+
+    // tworzymy nowy link
+    if (symlink(new_target, destination) < 0) {
+        perror("symlink creation failed");
+    }
     
     
 }
