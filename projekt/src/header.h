@@ -52,14 +52,28 @@ struct WatchMap {
 };
 
 // funkcje
-void file_watcher_reccursive(char *source_path, char *destination_path);
-void directory_copy(char *source, char *target);
-ssize_t bulk_write(int fd, const char *buf, size_t count);
-void handle_link(char *source, char *destination, char *root_src,
-                 char *root_dst);
-void file_copy(char *source, char *destination);
-void add_watches_recursive(int notify_fd, char *source_path,
-                           char *destination_path);
-void add_watch_to_map(int wd, const char *src, const char *dst);
+// main.c
+void remove_newline(char *line);
+void list_all(struct wezel *head);
+void delete_node(struct wezel **head_ref, char *source_path, char *destination_path);
+int tokenize(char *line, char *args[]);
 void handler(int sig);
+int is_subpath(const char *parent, const char *child);
+int is_duplicate(struct wezel *head, const char *src, const char *dst);
+
+// file_watcher_reccursive.c
+int is_dir_empty(const char *path);
+ssize_t bulk_write(int fd, const char *buf, size_t count);
+void copy_attributes(const char *source, const char *destination);
+void add_watch_to_map(int wd, const char *src, const char *dst);
+void file_copy(char *source, char *destination);
+void handle_link(char *source, char *destination, char *root_src, char *root_dst);
+void directory_copy(char *source_path, char *destination_path);
+void add_watches_recursive(int notify_fd, char *source_path, char *destination_path);
+struct Watch *get_watch_by_wd(int wd);
+void directory_delete(const char *path);
+void file_delete(const char *path);
+void remove_watch_from_map(int wd);
+void child_handler(int sig);
+void file_watcher_reccursive(char *source_path, char *destination_path);
 #endif

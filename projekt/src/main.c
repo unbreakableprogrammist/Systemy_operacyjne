@@ -44,7 +44,7 @@ void delete_node(struct wezel **head_ref, char *source_path,
         prev->next = tmp->next;
       }
       free(tmp);
-      return EXIT_SUCCESS;
+      return;
     }
     prev = tmp;
     tmp = tmp->next;
@@ -135,7 +135,11 @@ int is_subpath(const char *parent, const char *child) {
       return 0;
     }
     // Sklejamy rozwiązaną ścieżkę rodzica z nazwą folderu
-    snprintf(real_child, PATH_MAX, "%s/%s", real_parent_part, name_part);
+    int n= snprintf(real_child, PATH_MAX, "%s/%s", real_parent_part, name_part);
+    if(n>=PATH_MAX){
+      perror("snprintf");
+      return 0;
+    }
   }
 
   // Sprawdź czy to ten sam katalog

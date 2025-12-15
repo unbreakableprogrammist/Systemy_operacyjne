@@ -386,8 +386,12 @@ void file_watcher_reccursive(char *source_path, char *destination_path) {
           char full_src[PATH_MAX];
           char full_dst[PATH_MAX];
 
-          snprintf(full_src, PATH_MAX, "%s/%s", w->src, event->name);
-          snprintf(full_dst, PATH_MAX, "%s/%s", w->dst, event->name);
+          int n1= snprintf(full_src, PATH_MAX, "%s/%s", w->src, event->name);
+          int n2= snprintf(full_dst, PATH_MAX, "%s/%s", w->dst, event->name);
+          if(n1>=PATH_MAX || n2>=PATH_MAX){
+            perror("snprintf");
+            continue;
+          }
 
           if (event->mask & IN_ISDIR) { // czy event dotyczy katalogu
             if (event->mask & IN_CREATE ||
