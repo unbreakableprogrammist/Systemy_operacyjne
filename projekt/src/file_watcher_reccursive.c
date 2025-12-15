@@ -39,6 +39,18 @@ ssize_t bulk_write(int fd, const char *buf, size_t count) {
   }
   return len;
 }
+
+// Funkcja kopiująca same uprawnienia 
+void copy_attributes(const char *source, const char *destination) {
+    struct stat st;
+    // Pobieramy informacje o pliku źródłowym
+    if (stat(source, &st) == 0) {
+        // Nakładamy te same uprawnienia na cel and 077 -> odfilrowuje uprawnienia
+        if (chmod(destination, st.st_mode & 0777) < 0) {
+            perror("chmod failed");
+        } 
+    }
+}
 // funkcja dodajaca watch do mapy
 void add_watch_to_map(int wd, const char *src, const char *dst) {
   if (map.watch_count < MAX_WATCHES) { // sprawdzamy czy nie przekroczylismy
@@ -87,6 +99,7 @@ void file_copy(char *source, char *destination) {
   close(dst_fd);
   // printf("[CHILD %d] Skopiowano plik %s do %s\n", getpid(),
   // source,destination);
+  copy_attributes(source, destination);
 }
 
 void handle_link(char *source, char *destination, char *root_src,
@@ -230,7 +243,7 @@ void add_watches_recursive(int notify_fd, char *source_path,
                            char *destination_path) {
   int wd = inotify_add_watch(notify_fd, source_path,
                              IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_TO |
-                                 IN_MOVED_FROM | IN_DELETE_SELF);
+                                 IN_MOVED_FROM | IN_DELETE_SELF | IN_ATTRIB);
 
   if (wd < 0) {
     perror("inotify_add_watch failed");
@@ -374,6 +387,8 @@ void file_watcher_reccursive(char *source_path, char *destination_path) {
                                             // destination
               directory_delete(full_dst);
             }
+          } else if (event->mask & IN_ATTRIB) {
+            copy_attributes(full_src, full_dst);
           } else {
             if (event->mask & IN_CREATE || event->mask & IN_MODIFY ||
                 event->mask &
