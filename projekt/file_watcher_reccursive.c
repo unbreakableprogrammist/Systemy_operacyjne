@@ -1,18 +1,17 @@
 #include "header.h"
 
-// ZMIANA: static rozwiązuje problem "multiple definition"
 static volatile sig_atomic_t running = 1;
+// globalna tablica mapa watch descriptorów , src i dst
 struct WatchMap map = {0};
-// Sprawdza czy katalog jest pusty (ignoruje "." i "..")
-// Zwraca 1 (PUSTY - OK), 0 (NIEPUSTY - BŁĄD), -1 (Nie istnieje/Błąd dostępu)
+
+// funkcja sprawdzajaca czy katalog jest pusty , 1 - pusty , 0 - niepusty , -1 - blad
 int is_dir_empty(const char *path) {
     DIR *dir = opendir(path);
-    if (!dir) return -1; // Pewnie nie istnieje, więc jest "czysty"
-
-    struct dirent *entry;
-    int has_files = 0;
+    if (!dir) return -1; // Pewnie nie istnieje, więc jest "czysty" lub blad opendir
+    struct dirent *entry; 
+    int has_files = 0; // sprawdzamy czy ma jakies pliki 
     while ((entry = readdir(dir)) != NULL) {
-        // Jeśli znajdziemy cokolwiek innego niż kropki, to katalog nie jest pusty
+        // Jeśli znajdziemy cokolwiek innego niż "." lub ".." to jest niepusty
         if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
             has_files = 1;
             break;
@@ -21,10 +20,10 @@ int is_dir_empty(const char *path) {
     closedir(dir);
     return (has_files == 0); // Zwraca 1 jeśli pusty, 0 jeśli znaleziono pliki
 }
+// przekopiowane z ktoregos rozwiazania z labow
 ssize_t bulk_write(int fd, const char *buf, size_t count) {
   ssize_t c;
   ssize_t len = 0;
-
   while (count > 0) {
     c = TEMP_FAILURE_RETRY(write(fd, buf, count));
     if (c < 0)
@@ -38,26 +37,26 @@ ssize_t bulk_write(int fd, const char *buf, size_t count) {
   }
   return len;
 }
-
+// funkcja dodajaca watch do mapy
 void add_watch_to_map(int wd, const char *src, const char *dst) {
-  if (map.watch_count < MAX_WATCHES) {
-    map.watch_map[map.watch_count].wd = wd;
-    strncpy(map.watch_map[map.watch_count].src, src, PATH_MAX - 1);
-    strncpy(map.watch_map[map.watch_count].dst, dst, PATH_MAX - 1);
-    map.watch_count++;
+  if (map.watch_count < MAX_WATCHES) { // sprawdzamy czy nie przekroczylismy maksymalnej liczby watchow
+    map.watch_map[map.watch_count].wd = wd; // dodajemy wd
+    strncpy(map.watch_map[map.watch_count].src, src, PATH_MAX - 1); // kopiujemy sciezke src
+    strncpy(map.watch_map[map.watch_count].dst, dst, PATH_MAX - 1); // kopiujemy sciezke dst
+    map.watch_count++; // zwiększamy liczbe watchy 
   } else {
     printf("[CHILD %d] Przekroczono maksymalna liczbe watchow\n", getpid());
   }
 }
-
+// funkcja od kopiowania pliku
 void file_copy(char *source, char *destination) {
-  int src_fd = open(source, O_RDONLY);
+  int src_fd = open(source, O_RDONLY); // otwieramy plik zrodlowy ale w trybie tylko do odczytu
   if (src_fd < 0) {
-    perror("open source failed");
+    perror("open source failed");  // nie wywolujemy ERR bo nieodczytanie jednego pliku nie powoduje zatrzymania
     return;
   }
-
-  int dst_fd = open(destination, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  // otwieramy plik docelowy ale w trybie tylko do zapisu , O_TRUNC zeruje plik jesli istnieje
+  int dst_fd = open(destination, O_WRONLY | O_CREAT | O_TRUNC, 0644); 
   if (dst_fd < 0) {
     perror("open destination failed");
     close(src_fd);
@@ -72,66 +71,102 @@ void file_copy(char *source, char *destination) {
       break;
     }
   }
-
   if (n < 0)
     perror("read source failed");
 
   close(src_fd);
   close(dst_fd);
-  printf("[CHILD %d] Skopiowano plik %s do %s\n", getpid(), source,
-         destination);
+  //printf("[CHILD %d] Skopiowano plik %s do %s\n", getpid(), source,destination);
 }
 
 void handle_link(char *source, char *destination) {
   (void)source;
   (void)destination;
 }
-
+// -> tu skonczylem 
 void directory_copy(char *source_path, char *destination_path) {
-  struct stat st_dest;
-  if (stat(destination_path, &st_dest) == -1) {
-    if (mkdir(destination_path, 0755) < 0 && errno != EEXIST) {
-      perror("mkdir root destination failed");
-      return;
-    }
-  }
-
-  DIR *dir = opendir(source_path);
-  if (!dir) {
-    perror("opendir failed");
-    return;
-  }
-
-  struct dirent *entry;
-  while ((entry = readdir(dir)) != NULL) {
-    if ((strcmp((entry->d_name), ".")) == 0 ||
-        (strcmp((entry->d_name), "..")) == 0) {
-      continue;
-    }
-
-    char next_src[PATH_MAX];
-    char next_dst[PATH_MAX];
-    snprintf(next_src, PATH_MAX, "%s/%s", source_path, entry->d_name);
-    snprintf(next_dst, PATH_MAX, "%s/%s", destination_path, entry->d_name);
-
-    struct stat st;
-    if (lstat(next_src, &st) == 0) {
-      if (S_ISDIR(st.st_mode)) {
-        if (mkdir(next_dst, st.st_mode & 0777) < 0 && errno != EEXIST) {
-          perror("mkdir recursive failed");
-          continue;
+    // struktura na czytanie z katalogu docelowego
+    struct stat st_dest;
+    // Sprawdzamy stan katalogu docelowego
+    if (stat(destination_path, &st_dest) == 0) {
+        // Ścieżka istnieje. Sprawdzamy, czy to katalog.
+        if (S_ISDIR(st_dest.st_mode)) {
+            // Jeśli istnieje, MUSI być pusty 
+            // Uwaga: Funkcja wywoływana rekurencyjnie trafia na puste katalogi utworzone
+            // chwilę wcześniej przez pętlę while (mkdir), więc tam is_dir_empty zwróci true (OK).
+            // Problem będzie tylko przy pierwszym wywołaniu dla niepustego folderu.
+            if (!is_dir_empty(destination_path)) {
+                fprintf(stderr, "[PID %d] BŁĄD: Katalog docelowy '%s' nie jest pusty!\n", getpid(), destination_path);
+                exit(EXIT_FAILURE); // Kończymy proces backupu, bo nie wolno nadpisywać
+            }
+        } else {
+            fprintf(stderr, "[PID %d] BŁĄD: '%s' istnieje, ale nie jest katalogiem.\n", getpid(), destination_path);
+            exit(EXIT_FAILURE);
         }
-        directory_copy(next_src, next_dst);
-      } else if (S_ISREG(st.st_mode)) {
-        file_copy(next_src, next_dst);
-      } else if (S_ISLNK(st.st_mode)) {
-        handle_link(next_src, next_dst);
-      }
     } else {
-      perror("lstat failed");
+        // Nie istnieje -> Tworzymy nowy
+        // 0755 to standardowe uprawnienia (rwxr-xr-x)
+        if (mkdir(destination_path, 0755) < 0 && errno != EEXIST) {
+            perror("mkdir destination failed");
+            exit(EXIT_FAILURE);
+        }
     }
-  }
-  closedir(dir);
+
+    // 2. Otwieranie źródła
+    DIR *dir = opendir(source_path);
+    if (!dir) {
+        // Jeśli nie możemy otworzyć źródła, to backup tego fragmentu jest niemożliwy
+        perror("opendir source failed");
+        return; 
+    }
+
+    // 3. Iteracja po plikach
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Pomijamy . i ..
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+
+        char next_src[PATH_MAX];
+        char next_dst[PATH_MAX];
+        
+        // Bezpieczne tworzenie ścieżek
+        // Sprawdzamy wynik, żeby nie uciąć ścieżki (buffer overflow protection)
+        int n1 = snprintf(next_src, PATH_MAX, "%s/%s", source_path, entry->d_name);
+        int n2 = snprintf(next_dst, PATH_MAX, "%s/%s", destination_path, entry->d_name);
+
+        if (n1 >= PATH_MAX || n2 >= PATH_MAX) {
+            fprintf(stderr, "Ścieżka zbyt długa, pomijam: %s\n", entry->d_name);
+            continue;
+        }
+
+        struct stat st;
+        // Używamy lstat, żeby nie wchodzić w symlinki (wymóg obsługi symlinków jako plików [cite: 11])
+        if (lstat(next_src, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) {
+                // REKURENCJA:
+                // Najpierw tworzymy pusty katalog w celu...
+                if (mkdir(next_dst, st.st_mode & 0777) < 0 && errno != EEXIST) {
+                    perror("mkdir recursive failed");
+                    continue; 
+                }
+                // ...a potem wchodzimy do środka (katalog jest pusty, więc walidacja na początku przejdzie)
+                directory_copy(next_src, next_dst);
+                
+            } else if (S_ISREG(st.st_mode)) {
+                // Zwykły plik
+                file_copy(next_src, next_dst);
+                
+            } else if (S_ISLNK(st.st_mode)) {
+                // Symlink [cite: 11, 12, 13]
+                handle_link(next_src, next_dst);
+            }
+        } else {
+            perror("lstat failed inside loop");
+        }
+    }
+    closedir(dir);
 }
 
 void add_watches_recursive(int notify_fd, char *source_path,
