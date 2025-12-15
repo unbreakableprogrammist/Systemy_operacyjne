@@ -143,6 +143,11 @@ void handle_link(char *source, char *destination, char *root_src,
 
 void directory_copy(char *source_path, char *destination_path) {
   // struktura na czytanie z katalogu docelowego
+  struct stat st_src;
+  if (stat(source_path, &st_src) < 0) {
+    perror("stat source dir failed");
+    return; // Jeśli nie widzimy źródła, nie możemy go skopiować
+  }
   struct stat st_dest;
   // Sprawdzamy stan katalogu docelowego
   if (stat(destination_path, &st_dest) ==
@@ -157,7 +162,10 @@ void directory_copy(char *source_path, char *destination_path) {
                 getpid(), destination_path);
         exit(EXIT_FAILURE); // Kończymy proces backupu, bo nie wolno nadpisywać
       }
-      // jesli jest pusty to luz
+      // jesli jest pusty to luz - ustawiamy tylko takie same uprawnienia
+      if (chmod(destination_path, st_src.st_mode & 0777) < 0) {
+        perror("chmod existing dir failed");
+      }
     } else {
       // w takim wypadku sciezka podana to nie byl katalog
       fprintf(stderr,
@@ -169,7 +177,7 @@ void directory_copy(char *source_path, char *destination_path) {
     // Nie istnieje -> Tworzymy nowy
     // 0755 to standardowe uprawnienia dla katalogu bo wykonanie = wejscie do
     // katalogu
-    if (mkdir(destination_path, 0755) < 0 &&
+    if (mkdir(destination_path, st_src.st_mode & 0777) < 0 &&
         errno != EEXIST) { // EEXIST = katalog juz istnieje
       perror("mkdir destination failed");
       exit(EXIT_FAILURE);
@@ -386,26 +394,36 @@ void file_watcher_reccursive(char *source_path, char *destination_path) {
                                             // lub przeniesienia -> usuń z
                                             // destination
               directory_delete(full_dst);
+            }else if (event->mask & IN_ATTRIB) {
+              copy_attributes(full_src, full_dst);
             }
-          } else if (event->mask & IN_ATTRIB) {
-            copy_attributes(full_src, full_dst);
           } else {
-            if (event->mask & IN_CREATE || event->mask & IN_MODIFY ||
-                event->mask &
-                    IN_MOVED_TO) { // jesli dotyczy tworzenia pliku lub
-                                   // modyfikacji lub przeniesienia -> kopiuj z
-                                   // source do destination
-              file_copy(full_src, full_dst);
-            } else if (event->mask & IN_DELETE ||
-                       event->mask & IN_MOVED_FROM) { // jesli dotyczy usuwania
-                                                      // pliku lub przeniesienia
-                                                      // -> usuń z destination
+            if (event->mask & IN_CREATE || event->mask & IN_MODIFY || event->mask & IN_MOVED_TO) {
+              
+              // Sprawdzamy czym jest obiekt zanim go skopiujemy!
+              struct stat st;
+              if (lstat(full_src, &st) == 0) { 
+                  if (S_ISLNK(st.st_mode)) {
+                      // To jest link symboliczny -> używamy handle_link
+                      handle_link(full_src, full_dst, w->src, w->dst);
+                  } else {
+                      // To jest zwykły plik -> używamy file_copy
+                      file_copy(full_src, full_dst);
+                  }
+              }
+
+            } else if (event->mask & IN_DELETE || event->mask & IN_MOVED_FROM) {
               file_delete(full_dst);
+            } else if (event->mask & IN_ATTRIB) {
+              struct stat st;
+              if (lstat(full_src, &st) == 0 && !S_ISLNK(st.st_mode)) {
+                  copy_attributes(full_src, full_dst);
+              }
             }
           }
         }
       }
-      // jesli dostalismy informacje o usunieciu monitora to oznacza ze katalog
+      // jesli dostalismy informacje o usunieciu watcha to oznacza ze katalog
       // zostal usuniety
       if (event->mask & IN_IGNORED) {
         remove_watch_from_map(event->wd);
