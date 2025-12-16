@@ -230,7 +230,7 @@ int main() {
       }
       for (int i = 2; i < argc; i++) {
         if (is_subpath(args[1], args[i])) {
-          printf("BŁĄD: Cel '%s' znajduje się wewnątrz źródła '%s'!\n", args[i],
+          printf("BŁĄD: Cel '%s' znajduje się wewnątrz źródła lub source nie istnieje '%s'!\n", args[i],
                  args[1]);
           continue;
         }
@@ -276,6 +276,12 @@ int main() {
       printf("  end <zrodlo> <cel>             - Zatrzymuje proces\n");
       printf("  exit                           - Wyjście\n");
       printf("------------------------\n");
+    } else if (strcmp(args[0], "recover") == 0) {
+      if (argc < 3) {
+        printf("Podaj źródło i cel.\n");
+        continue;
+      }
+      recover(args[1], args[2]);
     } else {
       continue;
     }

@@ -76,4 +76,5 @@ void file_delete(const char *path);
 void remove_watch_from_map(int wd);
 void child_handler(int sig);
 void file_watcher_reccursive(char *source_path, char *destination_path);
+void recover(char *source_path, char *destination_path);
 #endif
