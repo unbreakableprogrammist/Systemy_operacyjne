@@ -318,7 +318,7 @@ int main()
             printf("  exit                           - Wyjście\n");
             printf("------------------------\n");
         }
-        else if (strcmp(args[0], "recover") == 0)
+        else if (strcmp(args[0], "restore") == 0)
         {
             if (argc < 3)
             {
