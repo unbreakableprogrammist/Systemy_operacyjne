@@ -1,12 +1,15 @@
 #include "header.h"
 
-void recover(char *source_path, char *destination_path) {
+void recover(char *source_path, char *destination_path)
+{
     struct stat sb;
-    if (stat(source_path, &sb) == -1) {
+    if (stat(source_path, &sb) == -1)
+    {
         perror("stat");
         return;
     }
-    if (!S_ISDIR(sb.st_mode)) {
+    if (!S_ISDIR(sb.st_mode))
+    {
         perror("recover");
         return;
     }

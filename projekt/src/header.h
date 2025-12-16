@@ -27,28 +27,30 @@
 // Ile podkatalogów może obserwować jeden proces?
 #define MAX_WATCHES 4096
 
-#define ERR(source)                                                            \
-  (fprintf(stderr, "%s:%d\n", __FILE__, __LINE__), perror(source),             \
-   kill(0, SIGKILL), exit(EXIT_FAILURE))
+#define ERR(source) \
+    (fprintf(stderr, "%s:%d\n", __FILE__, __LINE__), perror(source), kill(0, SIGKILL), exit(EXIT_FAILURE))
 
 // struktura do przechowywania listy procesów + to co obserwuja
-struct wezel {
-  pid_t pid;
-  char source_path[MAX_PATH];
-  char destination_path[MAX_PATH];
-  struct wezel *next;
+struct wezel
+{
+    pid_t pid;
+    char source_path[MAX_PATH];
+    char destination_path[MAX_PATH];
+    struct wezel *next;
 };
 
 // Mapa do przechowywania par: deskryptor -> ścieżka -> kopia
-struct Watch {
-  int wd;
-  char src[PATH_MAX];
-  char dst[PATH_MAX];
+struct Watch
+{
+    int wd;
+    char src[PATH_MAX];
+    char dst[PATH_MAX];
 };
 // mapa do przechowywania par: deskryptor -> ścieżka -> kopia
-struct WatchMap {
-  struct Watch watch_map[MAX_WATCHES];
-  int watch_count;
+struct WatchMap
+{
+    struct Watch watch_map[MAX_WATCHES];
+    int watch_count;
 };
 
 // funkcje
