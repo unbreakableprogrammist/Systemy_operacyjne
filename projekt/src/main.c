@@ -281,7 +281,13 @@ int main() {
         printf("Podaj źródło i cel.\n");
         continue;
       }
-      recover(args[1], args[2]);
+      pid_t dziecko = fork();
+      if(dziecko == 0){
+        recover(args[1],args[2]);
+        exit(EXIT_SUCCESS);
+      }else{
+        waitpid(dziecko, NULL, 0);
+      }
     } else {
       continue;
     }

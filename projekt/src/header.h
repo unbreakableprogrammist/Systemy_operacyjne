@@ -19,11 +19,11 @@
 // Bufor na ścieżki - zostawiamy systemowy standard
 #define MAX_PATH PATH_MAX
 // Bufor na linię komend - MUSI pomieścić co najmniej dwie ścieżki!
-#define MAXLINE (MAX_PATH * 2 + 256)
+#define MAXLINE (MAX_PATH * 10 + 256)
 // Maksymalna liczba argumentów w komendzie (add p1 p2 p3...)
 #define MAXARGS 32
 // Ile procesów backupu naraz(ile maks dzieci)
-#define MAX_BACKUPS 64
+#define MAX_BACKUPS 100
 // Ile podkatalogów może obserwować jeden proces?
 #define MAX_WATCHES 4096
 
