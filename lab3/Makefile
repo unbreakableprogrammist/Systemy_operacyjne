@@ -4,6 +4,11 @@ LDFLAGS=-fsanitize=address,undefined
 LDLIBS=-lpthread -lm
 
 
+zad3: zad3.c
+	$(CC) $(CFLAGS) $(LDFLAGS) zad3.c -o zad3 $(LDLIBS)
+
+
+
 zad2: zad2.c
 	$(CC) $(CFLAGS) $(LDFLAGS) zad2.c -o zad2 $(LDLIBS)
 
@@ -13,4 +18,4 @@ zad1: zad1.c
 
 
 clean:
-	rm -f zad1 zad2
+	rm -f zad1 zad2 zad3
