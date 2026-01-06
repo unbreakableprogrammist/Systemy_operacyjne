@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h> // Potrzebne do time()
+#include <time.h> 
 
 #define ERR(source) (perror(source), fprintf(stderr, "%s:%d\n", __FILE__, __LINE__), exit(EXIT_FAILURE))
 
@@ -91,12 +91,16 @@ int main(int argc, char **argv) {
     if(pthread_create(&tid, NULL, thread_for_signals, do_przekazania) != 0) ERR("pthread create");
 
     // Pętla główna
-    while(running){ // Czytanie running bez mutexa jest tu ryzykowne, ale na potrzeby zadania ujdzie
+    pthread_mutex_lock(&do_running);
+    while(running){ 
         sleep(1);
         
         // Sprawdzamy running ponownie po sleepie, żeby nie wypisywać jeśli właśnie przyszedł SIGQUIT
-        if(!running) break; 
-
+        pthread_mutex_lock(&do_running);
+        int czy_dalej = running;
+        pthread_mutex_unlock(&do_running);
+        if(!czy_dalej) break; 
+        
         printf("Lista: ");
         for(int i=1; i<=k; i++){
             pthread_mutex_lock(&do_przekazania->blok[i]);
@@ -108,7 +112,7 @@ int main(int argc, char **argv) {
         printf("\n"); // <--- WAŻNE: Nowa linia, żeby zrzucić bufor na ekran
     }
 
-    // --- SPRZĄTANIE (BARDZO WAŻNE) ---
+    // --- SPRZĄTANIE  ---
     
     // 1. Czekamy aż wątek pomocniczy skończy pracę!
     pthread_join(tid, NULL);
