@@ -120,12 +120,11 @@ int main(int argc, char **argv) {
             nanosleep(&maly_sen,NULL);   
         }
     }
-
-    // TODO : join watkow 
+    //łączenie wątków 
     for(int i=0;i<=n;i++){
         if(pthread_join(threads[i],NULL)!=0) ERR("pthread join");
     }
-    //TODO:  destroy mutex
+    //usuwanie mutexów
     if(pthread_mutex_destroy(&do_L)) ERR("pthread destroy");
     if(pthread_mutex_destroy(&do_czy_wszystkie)) ERR("pthread destroy");
 
