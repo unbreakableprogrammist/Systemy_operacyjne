@@ -104,7 +104,7 @@ int main(int argc, char **argv) {
         pthread_mutex_unlock(&do_L);
         
         nanosleep(&minisek,NULL);
-        // 2. Czekamy, aż wszyscy sprawdzą LUB przyjdzie sygnał końca
+        // Czekamy, aż wszyscy sprawdzą LUB przyjdzie sygnał końca
         while(running){
             pthread_mutex_lock(&do_czy_wszystkie);
             int done = czy_wszytskie;
@@ -114,9 +114,12 @@ int main(int argc, char **argv) {
     }
 
     // TODO : join watkow 
-
+    for(int i=0;i<=n;i++){
+        if(pthread_join(threads[i],NULL)!=0) ERR("pthread join");
+    }
     //TODO:  destroy mutex
+    if(pthread_mutex_destroy(&do_L)) ERR("pthread destroy");
+    if(pthread_mutex_destroy(&do_czy_wszystkie)) ERR("pthread destroy");
 
-    
     return EXIT_SUCCESS;
 }
