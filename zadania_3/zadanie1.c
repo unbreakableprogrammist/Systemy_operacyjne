@@ -21,8 +21,8 @@ dodatkowo bedziemy sprawdzac zmienna globalna czy wszyskie watki juz sobie spraw
 */
 
 volatile sig_atomic_t running = 1;
-pthread_mutex_t do_running;
-int L;
+
+int L=0;
 pthread_mutex_t do_L;
 int czy_wszytskie;
 pthread_mutex_t do_czy_wszystkie;
@@ -36,9 +36,7 @@ void* signal_handler(void* arg){
         if(sigwait(&set, &sig) != 0) ERR("sigwait");
         if(sig == SIGINT){
             //zmieniamy running na false 
-            pthread_mutex_lock(&do_running);
             running = 0;
-            pthread_mutex_unlock(&do_running);
             break;
         }
     }
@@ -46,20 +44,39 @@ void* signal_handler(void* arg){
 }
 
 void* thread_work(void* arg){
-
+    int id = *(int*)arg;
+    free(arg);
+    unsigned int seed = time(NULL)^id;
+    int M = 2+ rand_r(&seed) % 99;
+    pthread_mutex_lock(&do_L);
+    int stare_L = L;
+    pthread_mutex_unlock(&do_L);
+    while(running){
+        pthread_mutex_lock(&do_L);
+        if(L!=stare_L){
+            if(L%M == 0) printf("L jest podzielne przez M");
+            stare_L = L;
+            pthread_mutex_lock(&do_czy_wszystkie);
+            czy_wszytskie++;
+            pthread_mutex_unlock(&do_czy_wszystkie);
+        }
+        pthread_mutex_unlock(&do_L);
+    }
+    pthread_mutex_lock(&do_L);
+    if(L%M == 0) printf("L jest podzielne przez M");
+    pthread_mutex_unlock(&do_L);
 }
 
 int main(int argc, char **argv) {
     if (argc != 2) ERR("Wrong number of arguments");
     int n = atoi(argv[1]);
-    
+
     // bedziemy ignorowac SIGINT poza watkiem do tego odpowiedzialnym 
     sigset_t maska;
     sigemptyset(&maska);
     sigaddset(&maska,SIGINT);
     if(pthread_sigmask(SIG_BLOCK, &maska, NULL) != 0) ERR("sigmask");
     // iniciujemy mutexy 
-    if(pthread_mutex_init(&do_running, NULL)) ERR("pthread init");
     if(pthread_mutex_init(&do_L, NULL)) ERR("pthread init");
     if(pthread_mutex_init(&do_czy_wszystkie, NULL)) ERR("pthread init");
 
@@ -70,14 +87,36 @@ int main(int argc, char **argv) {
     
     //teraz tworzymy n watkow roboczych
     for(int i=0;i<n;i++){
-        if(pthread_create(&threads[i],NULL,thread_work,NULL)!=0) ERR("pthread create");
+        int *arg = malloc(sizeof(int));
+        *arg = i;
+        if(pthread_create(&threads[i],NULL,thread_work,arg)!=0) ERR("pthread create");
     }
     srand(time(NULL));
     // teraz glowna czesc 
+    struct timespec minisek = {0,100000000};
     while(running){
+        pthread_mutex_lock(&do_czy_wszystkie);
+        czy_wszytskie = 0;
+        pthread_mutex_unlock(&do_czy_wszystkie);
+        // zwiekaszamy L
+        pthread_mutex_lock(&do_L);
+        L+=1;
+        pthread_mutex_unlock(&do_L);
         
+        nanosleep(&minisek,NULL);
+        // 2. Czekamy, aż wszyscy sprawdzą LUB przyjdzie sygnał końca
+        while(running){
+            pthread_mutex_lock(&do_czy_wszystkie);
+            int done = czy_wszytskie;
+            pthread_mutex_unlock(&do_czy_wszystkie);
+           if(done == n) break; // Wszyscy sprawdzili, wychodzimy z pętli czekania       
+        }
     }
 
-    // destroy mutex
+    // TODO : join watkow 
+
+    //TODO:  destroy mutex
+
+    
     return EXIT_SUCCESS;
 }
