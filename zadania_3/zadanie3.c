@@ -12,6 +12,7 @@
 
 #define ERR(source) (perror(source), fprintf(stderr, "%s:%d\n", __FILE__, __LINE__), exit(EXIT_FAILURE))
 
+volatile sig_atomic_t running = 1; // Flaga do kontrolowania dzialania watkow
 // Struktura ze wspólnymi zasobami (tor, mutexy)
 typedef struct arg{
     int* tor;
@@ -31,8 +32,36 @@ typedef struct signal_args{
     int k;
 } signal_args;
 
-void* thread_work(void* ptr) {
+void* thread_work(void* argument) {
+    dog* doggo = (dog*)argument;
+    int id = doggo->id;
+    arg* args = doggo->arguments;
+    int n = args->n;
+    int* tor = args->tor;
+    pthread_mutex_t* mutexy = args->mutexy;
 
+    unsigned int seed = time(NULL) ^ id; // unikalny seed dla kazdego psa
+    int position = -1; // poczatkowa pozycja psa (poza torem)
+    while(running){
+        int random_time = 200+ rand_r(&seed) % 1321; // 200 - 1520 ms
+        struct timespec ts= {0,random_time * 1000000}; // zamiana na milisekundy
+        nanosleep(&ts, NULL);
+        int skok = 1 + rand_r(&seed) % 5; // skok 1-5
+        if(position + skok < n-1){ // to oznacza ze nie wejdziemy poza tor ani na mete
+            // zwalniamy obecna pozycje
+            pthread_mutex_lock(&mutexy[position]);
+            tor[position] -=1; // zwalniamy miejsce na torze
+            pthread_mutex_unlock(&mutexy[position]);
+            position += skok;
+            //blokujemy nowa pozycje
+            pthread_mutex_lock(&mutexy[position]);
+            tor[position] +=1;
+            pthread_mutex_unlock(&mutexy[position]);
+        }else if(position+skok >= n-1){  // wchodzimy na mete na razie nie handlujemy miejsc na pozycje 
+            
+        }
+
+    }
     return NULL;
 }
 
@@ -72,7 +101,6 @@ int main(int argc, char **argv) {
     for(int i = 0; i < k; i++) {
         dogs[i].id = i;       // Nadajemy unikalne ID psu
         dogs[i].arguments = arguments; // Przypisujemy wskaznik do wspolnych danych
-        
         // Przekazujemy adres KONKRETNEJ struktury dla danego psa (&dogs[i])
         if(pthread_create(&watki[i], NULL, thread_work, (void*)&dogs[i]) != 0) ERR("pthread create");
     }
