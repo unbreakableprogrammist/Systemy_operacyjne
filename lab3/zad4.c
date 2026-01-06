@@ -67,7 +67,10 @@ void* thread_work(void* arg){
         args->uczniowie[year-1]--;
         pthread_mutex_unlock(&mutexy_uczniowie[year-1]);
     }
+    dane->year = year;
+    pthread_cleanup_push(decrement_counter, dane);
     sleep(1);
+    pthread_cleanup_pop(0); // 0 oznacza ze nie wywolujemy cleanup teraz
     free(dane);
     return NULL;
 }
@@ -108,7 +111,7 @@ int main(int argc, char **argv) {
         }
         czy_wyrzucony[random_student]=1;
         if(pthread_cancel(tab[random_student])!=0) ERR("pthread cancel");
-    
+        
     }
     // czekamy na zakonczenie wszystkich watkow
     for(int i=0;i<n;i++){
