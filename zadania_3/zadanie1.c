@@ -48,22 +48,26 @@ void* thread_work(void* arg){
     free(arg);
     unsigned int seed = time(NULL)^id;
     int M = 2+ rand_r(&seed) % 99;
+    // int M =2;
     pthread_mutex_lock(&do_L);
-    int stare_L = L;
+    int stare_L = -1;
     pthread_mutex_unlock(&do_L);
+    struct timespec maly_sen = {0, 1000000}; // 1 milisekunda (dla ochrony procesora)
     while(running){
         pthread_mutex_lock(&do_L);
         if(L!=stare_L){
-            if(L%M == 0) printf("L jest podzielne przez M");
-            stare_L = L;
+            if(L%M == 0) printf("L: %d, jest podzielne przez M: %d\n (watek %d)\n",L,M,id);
+            stare_L = L;    
             pthread_mutex_lock(&do_czy_wszystkie);
             czy_wszytskie++;
             pthread_mutex_unlock(&do_czy_wszystkie);
         }
         pthread_mutex_unlock(&do_L);
+        nanosleep(&maly_sen,NULL);
+
     }
     pthread_mutex_lock(&do_L);
-    if(L%M == 0) printf("L jest podzielne przez M");
+    if(L%M == 0) printf("L jest podzielne przez M\n");
     pthread_mutex_unlock(&do_L);
 }
 
@@ -91,9 +95,12 @@ int main(int argc, char **argv) {
         *arg = i;
         if(pthread_create(&threads[i],NULL,thread_work,arg)!=0) ERR("pthread create");
     }
+    sleep(1); // dajemy czas na uruchomienie watkow
     srand(time(NULL));
     // teraz glowna czesc 
     struct timespec minisek = {0,100000000};
+    struct timespec maly_sen = {0, 1000000}; // 1 milisekunda (dla ochrony procesora)
+
     while(running){
         pthread_mutex_lock(&do_czy_wszystkie);
         czy_wszytskie = 0;
@@ -109,7 +116,8 @@ int main(int argc, char **argv) {
             pthread_mutex_lock(&do_czy_wszystkie);
             int done = czy_wszytskie;
             pthread_mutex_unlock(&do_czy_wszystkie);
-           if(done == n) break; // Wszyscy sprawdzili, wychodzimy z pętli czekania       
+            if(done == n) break; // Wszyscy sprawdzili, wychodzimy z pętli czekania    
+            nanosleep(&maly_sen,NULL);   
         }
     }
 
