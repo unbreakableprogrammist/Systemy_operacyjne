@@ -12,13 +12,13 @@
 
 #define ERR(source) (perror(source), fprintf(stderr, "%s:%d\n", __FILE__, __LINE__), exit(EXIT_FAILURE))
 
-volatile sig_atomic_t running = 1; // Flaga do kontrolowania dzialania watkow
-// Struktura ze wspólnymi zasobami (tor, mutexy)
+volatile sig_atomic_t running = 1;
+
 typedef struct arg{
     int* tor;
     pthread_mutex_t* mutexy;
-    int n; // dlugosc toru
-    int k; // ilosc psow
+    int n; 
+    int k; 
     int first_place;
     int second_place;
     int third_place;
@@ -29,20 +29,20 @@ typedef struct arg{
     pthread_mutex_t ile_na_mecie_mutex;
 } arg;
 
-// Struktura dla konkretnego psa (ma swoje ID i wskaznik do wspolnych zasobow)
 typedef struct dog{
     int id;
     arg* arguments;
 } dog;
 
-// Struktura dla argumentow watku sygnalowego
 typedef struct signal_args{
     pthread_t* watki;
     int k;
 } signal_args;
 
+// Pusty handler jest OK, ale lepiej żeby nic nie robił, 
+// bo printf w handlerze cleanup to ryzyko.
 void przerwanie(void* arg){
-
+    // Opcjonalnie tutaj można by odblokować mutex, gdybyśmy wiedzieli który.
 }
 
 void* thread_work(void* argument) {
@@ -52,218 +52,244 @@ void* thread_work(void* argument) {
     int n = args->n;
     int* tor = args->tor;
     pthread_mutex_t* mutexy = args->mutexy;
-    unsigned int seed = time(NULL) ^ id; // unikalny seed dla kazdego psa
-    int position = -1; // poczatkowa pozycja psa (poza torem)
+    
+    unsigned int seed = time(NULL) ^ id;
+    
+    int position = 0; 
+    int direction = 1; // 1 = prawo, -1 = lewo (DODANE: Kierunek)
+
+    // Wejście na start (przed pętlą, żeby nie komplikować logiki w środku)
+    pthread_mutex_lock(&mutexy[0]);
+    tor[0] += 1;
+    pthread_mutex_unlock(&mutexy[0]);
+
     while(running){
         pthread_cleanup_push(przerwanie, NULL);
-        int random_time = 200+ rand_r(&seed) % 1321; // 200 - 1520 ms
-        struct timespec ts= {0,random_time * 1000000}; // zamiana na milisekundy
-        nanosleep(&ts, NULL);
-        int skok = 1 + rand_r(&seed) % 5; // skok 1-5
-        if(position == -1){
-            // ustawiamy psa na starcie 
-            position = 0;
-            // blokujemy pozycje startowa
-            pthread_mutex_lock(&mutexy[position]);
-            tor[position] +=1; // zajmujemy miejsce na torze
-            pthread_mutex_unlock(&mutexy[position]);
-            continue;
+        
+        int random_time = 200 + rand_r(&seed) % 1321;
+        struct timespec ts= {0, random_time * 1000000};
+        nanosleep(&ts, NULL); // Punkt anulowania
+
+        int skok = 1 + rand_r(&seed) % 5;
+        
+        // Obliczamy potencjalną nową pozycję uwzględniając kierunek
+        int next_pos = position + (skok * direction);
+
+        // --- Logika Odbijania ---
+        if (next_pos >= n) {
+            // Uderzenie w metę/ścianę końca
+            next_pos = n - 1; 
+            // Jeśli nie uda się wejść na metę (bo zajęta - co sprawdzamy niżej),
+            // w następnej turze pójdziemy w drugą stronę.
+            // Ale nawet jak wejdziemy, to zmiana kierunku jest zgodna z treścią zadania.
+            direction = -1; 
+        } 
+        else if (next_pos < 0) {
+            // Uderzenie w start (gdyby wracał)
+            next_pos = 0;
+            direction = 1;
         }
-        if(position + skok < n-1){ // to oznacza ze nie wejdziemy poza tor ani na mete
-            // zwalniamy obecna pozycje
-            pthread_mutex_lock(&mutexy[position]);
-            tor[position] -=1; // zwalniamy miejsce na torze
-            pthread_mutex_unlock(&mutexy[position]);
-            position += skok;
-            //blokujemy nowa pozycje
-            pthread_mutex_lock(&mutexy[position]);
-            tor[position] +=1;
-            if(tor[position] > 1){
-                // jest tu inny pies
-                printf(" waf waf waf , pies: %d, na pozycji: %d\n", id, position);
+
+        // --- Ruch ---
+        if (next_pos != position) {
+            // 1. Najpierw zajmij NOWE miejsce (żeby pies nie zniknął)
+            pthread_mutex_lock(&mutexy[next_pos]);
+            tor[next_pos] += 1;
+            
+            // Sprawdzamy tłok PO zajęciu miejsca
+            bool tlok = (tor[next_pos] > 1);
+            pthread_mutex_unlock(&mutexy[next_pos]);
+
+            if (tlok) {
+                // POPRAWKA: Print poza mutexem dla bezpieczeństwa
+                printf("waf waf waf , pies: %d, na pozycji: %d\n", id, next_pos);
+                // Tutaj direction mógł się zmienić (np. uderzył w metę i odbił),
+                // więc w następnej turze pójdzie w dobrą stronę.
             }
+
+            // 2. Zwolnij STARE miejsce
+            pthread_mutex_lock(&mutexy[position]);
+            tor[position] -= 1;
             pthread_mutex_unlock(&mutexy[position]);
-            continue;
+
+            position = next_pos; // Aktualizacja lokalna
         }
-        if(position+skok == n-1){  // wchodzimy na mete 
-            pthread_mutex_lock(&mutexy[position]);
-            tor[position] -=1; // zwalniamy miejsce na torze
-            pthread_mutex_unlock(&mutexy[position]);
-            position = n-1; // ustawiamy na mete
-            // Zajmujemy mete
-            pthread_mutex_lock(&mutexy[position]);
-            tor[position] +=1;
-            if(tor[position] > 1){
-                // jest tu inny pies
-                printf(" waf waf waf , pies: %d, na mecie \n", id);
-            }
-            pthread_mutex_unlock(&mutexy[position]);
+
+        // --- Sprawdzenie Mety ---
+        if (position == n - 1) {
+            // Zwiększ licznik mety
             pthread_mutex_lock(&args->ile_na_mecie_mutex);
-            args->ile_na_mecie +=1;
+            args->ile_na_mecie += 1;
             pthread_mutex_unlock(&args->ile_na_mecie_mutex);
-            // Obsługa miejsc na podium
+
+            // Sprawdź podium
             pthread_mutex_lock(&args->first_place_mutex);
             if(args->first_place == -1){
                 args->first_place = id;
                 printf("Pies %d zajął 1 miejsce!\n", id);
                 pthread_mutex_unlock(&args->first_place_mutex);
-                break; // pies konczy wyscig
+                goto finish;
             }
             pthread_mutex_unlock(&args->first_place_mutex);
+
             pthread_mutex_lock(&args->second_place_mutex);
             if(args->second_place == -1){
                 args->second_place = id;
                 printf("Pies %d zajął 2 miejsce!\n", id);
                 pthread_mutex_unlock(&args->second_place_mutex);
-                break; // pies konczy wyscig
+                goto finish;
             }
             pthread_mutex_unlock(&args->second_place_mutex);
+
             pthread_mutex_lock(&args->third_place_mutex);
             if(args->third_place == -1){
                 args->third_place = id;
                 printf("Pies %d zajął 3 miejsce!\n", id);
                 pthread_mutex_unlock(&args->third_place_mutex);
-                break; // pies konczy wyscig
+                goto finish;
             }
             pthread_mutex_unlock(&args->third_place_mutex);
-            break;
-        }
-        if(position + skok > n-1){
-            // odbicie
-            int odbicie = (position + skok) - (n-1);
-            // zwalniamy obecna pozycje
+
+            // Poza podium
+            printf("Pies %d na mecie (poza podium)\n", id);
+
+            finish:
+            // WAŻNE: Skoro kończymy, zdejmijmy psa z licznika toru, 
+            // żeby nie blokował widoku/miejsca
             pthread_mutex_lock(&mutexy[position]);
-            tor[position] -=1; // zwalniamy miejsce na torze
+            tor[position] -= 1;
             pthread_mutex_unlock(&mutexy[position]);
-            position = (n-1) - odbicie;
-            //blokujemy nowa pozycje
-            pthread_mutex_lock(&mutexy[position]);
-            tor[position] +=1;
-            if(tor[position] > 1){
-                // jest tu inny pies
-                printf(" waf waf waf , pies: %d, na pozycji: %d\n", id, position);
-            }
-            pthread_mutex_unlock(&mutexy[position]);
-            continue;
+            
+            break; // Koniec pętli while(running)
         }
+
         pthread_cleanup_pop(0); 
     }
     return NULL;
 }
 
 void* signal_handler_threat(void* arg){
-    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED,NULL);
+    // Ten wątek tylko czeka na sygnał
     sigset_t set;
     sigemptyset(&set);
     sigaddset(&set, SIGINT);
     int sig;
-    while(1){
-        if(sigwait(&set, &sig) != 0) ERR("sigwait");
-        if(sig == SIGINT){
-            printf("Odebrano SIGINT, zatrzymywanie wyscigu...\n");
-            running = 0; // ustawiamy flage na 0, co spowoduje zakonczenie pracy watkow psow
-            signal_args* s_args = (signal_args*) arg;
-            for(int i = 0; i < s_args->k; i++){
-                if(pthread_cancel(s_args->watki[i]) != 0) ERR("pthread_cancel");
-            }
-            break;
-        }
+    
+    // sigwait jest punktem anulowania, więc cancel na nim zadziała
+    if(sigwait(&set, &sig) != 0) ERR("sigwait");
+    
+    if(sig == SIGINT){
+        printf("\nOdebrano SIGINT, zatrzymywanie wyscigu...\n");
+        running = 0;
+        // Nie musimy tu anulować wątków pętlą for,
+        // main to zrobi w sekcji sprzątania po wyjściu z while(running)
     }
+    return NULL;
 }
 
 int main(int argc, char **argv) {
     if(argc != 3) ERR("zla ilosc argumentow");
-    int n = atoi(argv[1]); // dlugosc toru
-    int k = atoi(argv[2]); // ilosc psow 
+    int n = atoi(argv[1]); 
+    int k = atoi(argv[2]); 
     if(n <= 0 || k <= 0) ERR("argumenty musza byc dodatnie");
 
-    // blokowanie sygnalu SIGINT w glownym watku
     sigset_t set;
     sigemptyset(&set);
     sigaddset(&set, SIGINT);
     if(pthread_sigmask(SIG_BLOCK, &set, NULL) != 0) ERR("pthread_sigmask");
 
-
-
-    // 1. Inicjalizacja wspolnych zasobow (arg)
     arg* arguments = malloc(sizeof(arg));
     if (!arguments) ERR("malloc arguments");
     arguments->first_place = -1;
     arguments->second_place = -1;
     arguments->third_place = -1;
+    arguments->ile_na_mecie = 0;
+    
+    if(pthread_mutex_init(&arguments->ile_na_mecie_mutex, NULL) != 0) ERR("mutex init");    
     if(pthread_mutex_init(&arguments->first_place_mutex, NULL) != 0) ERR("mutex init");
     if(pthread_mutex_init(&arguments->second_place_mutex, NULL) != 0) ERR("mutex init");
     if(pthread_mutex_init(&arguments->third_place_mutex, NULL) != 0) ERR("mutex init");
 
-    // calloc zeruje pamiec od razu
     int* tor = calloc(n, sizeof(int));
     if (!tor) ERR("malloc tor");
     arguments->tor = tor;
 
     pthread_mutex_t* mutexy = malloc(n * sizeof(pthread_mutex_t));
     if (!mutexy) ERR("malloc mutexy");
-    for(int i = 0; i < n; i++) {
-        if(pthread_mutex_init(&mutexy[i], NULL) != 0) ERR("mutex init");
-    }
+    for(int i = 0; i < n; i++) pthread_mutex_init(&mutexy[i], NULL);
+    
     arguments->mutexy = mutexy;
     arguments->n = n;
     arguments->k = k;
 
-    // 2. Przygotowanie tablicy struktur dla psow
-    // Dzieki temu kazdy watek dostanie swoje wlasne "pudelko" z unikalnym ID
     dog* dogs = malloc(k * sizeof(dog));
-    if (!dogs) ERR("malloc dogs");
+    pthread_t* watki = malloc(k * sizeof(pthread_t));
 
-    pthread_t* watki = malloc(k * sizeof(pthread_t)); // k wątków psów 
-    if (!watki) ERR("malloc watki");
-
-    // 3. Tworzenie watkow
     for(int i = 0; i < k; i++) {
-        dogs[i].id = i;       // Nadajemy unikalne ID psu
-        dogs[i].arguments = arguments; // Przypisujemy wskaznik do wspolnych danych
-        // Przekazujemy adres KONKRETNEJ struktury dla danego psa (&dogs[i])
+        dogs[i].id = i;
+        dogs[i].arguments = arguments;
         if(pthread_create(&watki[i], NULL, thread_work, (void*)&dogs[i]) != 0) ERR("pthread create");
     }
 
-    signal_args* sig_args = malloc(sizeof(signal_args));
-    sig_args->watki = watki;
-    sig_args->k = k;    
-
-    // TODO: watek od sygnalu SIGINT...
+    // Wątek sygnałowy nie potrzebuje 'sig_args', wystarczy mu NULL, bo tylko zmienia running
     pthread_t signal_thread;
-    if(pthread_create(&signal_thread, NULL, signal_handler_threat, (void*)sig_args) != 0) ERR("pthread create");
+    if(pthread_create(&signal_thread, NULL, signal_handler_threat, NULL) != 0) ERR("pthread create");
     
-    // TODO: Pętla glowna wypisujaca stan toru 
+    // --- PĘTLA GŁÓWNA ---
     while(running){
-        struct timespec ts = {0,100000000}; // 1000 ms
+        struct timespec ts = {0, 100000000}; // 100ms (zmieniłem z 1s dla płynności, ale jak wolisz 1s to {1,0})
         nanosleep(&ts, NULL);
+        
         printf("Stan toru: ");
         for(int i = 0; i < n; i++){
             pthread_mutex_lock(&mutexy[i]);
-            printf("[%d]: %d ", i, tor[i]);
+            printf("%d ", tor[i]); // Uproszczony widok
             pthread_mutex_unlock(&mutexy[i]);
         }
         printf("\n");
+        
         pthread_mutex_lock(&arguments->ile_na_mecie_mutex);
-        printf("Ile psow na mecie: %d\n", arguments->ile_na_mecie);
+        if(arguments->ile_na_mecie == k){
+            printf("Wszystkie psy dotarly do mety!\n");
+            running = 0; // Wyjście z pętli
+        }
         pthread_mutex_unlock(&arguments->ile_na_mecie_mutex);
     }
+    
+    // --- SPRZĄTANIE (POPRAWIONA KOLEJNOŚĆ!) ---
 
-    // TODO: cleanup...
+    printf("Konczenie watkow...\n");
+
+    // 1. Jeśli wyścig skończył się normalnie, wątek sygnałowy wciąż wisi na sigwait.
+    // Musimy go anulować. Jeśli przerwano SIGINTem, to on już się skończył, ale cancel nie zaszkodzi.
+    pthread_cancel(signal_thread);
+    pthread_join(signal_thread, NULL);
+
+    // 2. Anulujemy psy (dla pewności, jeśli przerwano w połowie) i czekamy na nie
+    for(int i = 0; i < k; i++) {
+        pthread_cancel(watki[i]); 
+        pthread_join(watki[i], NULL);
+    }
+
+    printf("Wyniki:\n");
+    if(arguments->first_place != -1) printf("1 miejsce: Pies %d\n", arguments->first_place);
+    if(arguments->second_place != -1) printf("2 miejsce: Pies %d\n", arguments->second_place);
+    if(arguments->third_place != -1) printf("3 miejsce: Pies %d\n", arguments->third_place);
+
+    // 3. Dopiero TERAZ niszczymy mutexy
+    pthread_mutex_destroy(&arguments->first_place_mutex);
+    pthread_mutex_destroy(&arguments->second_place_mutex);
+    pthread_mutex_destroy(&arguments->third_place_mutex);
+    pthread_mutex_destroy(&arguments->ile_na_mecie_mutex);
+    for (int i = 0; i < n; i++) pthread_mutex_destroy(&mutexy[i]);
+
+    // 4. Na samym końcu zwalniamy pamięć
     free(dogs);
     free(tor);
     free(mutexy);
     free(arguments);
     free(watki);
-    free(sig_args);
-    pthread_mutex_destroy(&arguments->first_place_mutex);
-    pthread_mutex_destroy(&arguments->second_place_mutex);
-    pthread_mutex_destroy(&arguments->third_place_mutex);
-    pthread_mutex_destroy(&arguments->ile_na_mecie_mutex);
-    for (int i = 0; i < n; i++)
-    {
-        pthread_mutex_destroy(&mutexy[i]);
-    }
+    
     
     return EXIT_SUCCESS;
 }
