@@ -56,79 +56,60 @@ void* thread_work(void* argument) {
     unsigned int seed = time(NULL) ^ id;
     
     int position = 0; 
-    int direction = 1; // 1 = prawo, -1 = lewo (DODANE: Kierunek)
+    int direction = 1;
 
-    // Wejście na start (przed pętlą, żeby nie komplikować logiki w środku)
     pthread_mutex_lock(&mutexy[0]);
     tor[0] += 1;
     pthread_mutex_unlock(&mutexy[0]);
 
+    // POPRAWKA: Push przed pętlą
+    pthread_cleanup_push(przerwanie, NULL);
+
     while(running){
-        pthread_cleanup_push(przerwanie, NULL);
-        
         int random_time = 200 + rand_r(&seed) % 1321;
         struct timespec ts= {0, random_time * 1000000};
-        nanosleep(&ts, NULL); // Punkt anulowania
+        nanosleep(&ts, NULL);
 
         int skok = 1 + rand_r(&seed) % 5;
-        
-        // Obliczamy potencjalną nową pozycję uwzględniając kierunek
         int next_pos = position + (skok * direction);
 
-        // --- Logika Odbijania ---
         if (next_pos >= n) {
-            // Uderzenie w metę/ścianę końca
             next_pos = n - 1; 
-            // Jeśli nie uda się wejść na metę (bo zajęta - co sprawdzamy niżej),
-            // w następnej turze pójdziemy w drugą stronę.
-            // Ale nawet jak wejdziemy, to zmiana kierunku jest zgodna z treścią zadania.
             direction = -1; 
         } 
         else if (next_pos < 0) {
-            // Uderzenie w start (gdyby wracał)
             next_pos = 0;
             direction = 1;
         }
 
-        // --- Ruch ---
         if (next_pos != position) {
-            // 1. Najpierw zajmij NOWE miejsce (żeby pies nie zniknął)
             pthread_mutex_lock(&mutexy[next_pos]);
             tor[next_pos] += 1;
-            
-            // Sprawdzamy tłok PO zajęciu miejsca
             bool tlok = (tor[next_pos] > 1);
             pthread_mutex_unlock(&mutexy[next_pos]);
 
             if (tlok) {
-                // POPRAWKA: Print poza mutexem dla bezpieczeństwa
                 printf("waf waf waf , pies: %d, na pozycji: %d\n", id, next_pos);
-                // Tutaj direction mógł się zmienić (np. uderzył w metę i odbił),
-                // więc w następnej turze pójdzie w dobrą stronę.
             }
 
-            // 2. Zwolnij STARE miejsce
             pthread_mutex_lock(&mutexy[position]);
             tor[position] -= 1;
             pthread_mutex_unlock(&mutexy[position]);
 
-            position = next_pos; // Aktualizacja lokalna
+            position = next_pos;
         }
 
-        // --- Sprawdzenie Mety ---
         if (position == n - 1) {
-            // Zwiększ licznik mety
             pthread_mutex_lock(&args->ile_na_mecie_mutex);
             args->ile_na_mecie += 1;
             pthread_mutex_unlock(&args->ile_na_mecie_mutex);
 
-            // Sprawdź podium
             pthread_mutex_lock(&args->first_place_mutex);
             if(args->first_place == -1){
                 args->first_place = id;
                 printf("Pies %d zajął 1 miejsce!\n", id);
                 pthread_mutex_unlock(&args->first_place_mutex);
-                goto finish;
+                goto finish; // Używamy goto żeby wyskoczyć do sprzątania
             }
             pthread_mutex_unlock(&args->first_place_mutex);
 
@@ -150,21 +131,21 @@ void* thread_work(void* argument) {
             }
             pthread_mutex_unlock(&args->third_place_mutex);
 
-            // Poza podium
             printf("Pies %d na mecie (poza podium)\n", id);
 
             finish:
-            // WAŻNE: Skoro kończymy, zdejmijmy psa z licznika toru, 
-            // żeby nie blokował widoku/miejsca
             pthread_mutex_lock(&mutexy[position]);
             tor[position] -= 1;
             pthread_mutex_unlock(&mutexy[position]);
             
-            break; // Koniec pętli while(running)
+            // Teraz break zadziała poprawnie, bo jesteśmy wewnątrz while, 
+            // ale push jest na zewnątrz!
+            break; 
         }
-
-        pthread_cleanup_pop(0); 
     }
+
+    // POPRAWKA: Pop po pętli
+    pthread_cleanup_pop(0);
     return NULL;
 }
 
