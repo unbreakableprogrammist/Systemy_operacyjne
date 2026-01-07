@@ -103,7 +103,7 @@ void* thread_work(void* argument) {
             position = next_pos;
         }
 
-        // --- OBSŁUGA METY BEZ GOTO ---
+        // Sprawdzenie czy pies dotarł do mety
         if (position == n - 1) {
             // Zwiększ licznik psów na mecie
             pthread_mutex_lock(&args->ile_na_mecie_mutex);
@@ -153,7 +153,7 @@ void* thread_work(void* argument) {
             tor[position] -= 1;
             pthread_mutex_unlock(&mutexy[position]);
             
-            break; // Wyjście z pętli while
+            break; 
         }
     }
 
