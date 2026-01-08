@@ -16,7 +16,7 @@ typedef struct do_transforma{
     circular_buffer* bufor_b;
 } do_transforma;
 
-
+volatile  sig_atomic_t working = 1;
 // Funkcja tworząca bufor
 circular_buffer* circular_buffer_create() {
     circular_buffer* cb = (circular_buffer*) malloc(sizeof(circular_buffer));
@@ -93,19 +93,39 @@ void canceletion_point(){
 
 void* decode_thread(void* arg){
     pthread_cleanup_push(canceletion_point,NULL);
-    
-
-
-    pthread_cleanup_pop(canceletion_point,NULL);
+    // wywolujemy funkcje decode_frame i klatka po klatce wkladamy do bufora za pomoca circular_buffer_push
+    circular_buffer* wejscie = (circular_buffer*) arg; // zdejmujemy strukturke 
+    while(working){
+        video_frame* klatka = decode_frame();
+        circular_buffer_push(wejscie,klatka);
+    }
+    pthread_cleanup_pop(0);
 }
 
 void* transform_thread(void* arg){
-    
+    pthread_cleanup_push(canceletion_point,NULL);
+    do_transforma* wejscie = (do_transforma*)arg;
+    circular_buffer* buffor1 = wejscie->bufor_a;
+    circular_buffer* buffor2 = wejscie->bufor_b;
+    while(working){
+        video_frame* klatka = circular_buffer_pop(buffor1);
+        transform_frame(klatka);
+        circular_buffer_push(buffor2,klatka);
+    }
+    pthread_cleanup_pop(0);
 }
 
-
+// teraz najtrudniejsza funkcja ( chodzi o to ze musimy sobie zapamietywac ostatni czas , sprawdzac terazniejszy i odejmowac sprawdzajac czy trafimy w 33ms)
 void* display_thread(void* arg){
-    
+    pthread_cleanup_push(canceletion_point,NULL);
+    circular_buffer* wejscie = (circular_buffer*) arg;
+    struct timespec last_frame = {0, 0};
+    struct timespec small_break ={0,500000}; // 0.5ms
+    while(working){
+        video_frame* klatka = circular_buffer_pop(wejscie);
+        display_frame(klatka);
+    }
+    pthread_cleanup_pop(0);
 }
 
 int main(int argc, char* argv[])
@@ -127,6 +147,8 @@ int main(int argc, char* argv[])
     pthread_t decode;
     pthread_t transform;
     pthread_t display;
+    dt->bufor_a = buffor_a;
+    dt->bufor_b = buffor_b;
 
     if(pthread_create(&decode,NULL,decode_thread,buffor_a)) ERR("thread create");
     if(pthread_create(&transform,NULL,transform_thread,dt)) ERR("thread create");
