@@ -10,6 +10,13 @@ typedef struct circular_buffer
     pthread_mutex_t mtx; // jeden mutex do ochrony calej struktury
 } circular_buffer;
 
+
+typedef struct do_transforma{
+    circular_buffer* bufor_a;
+    circular_buffer* bufor_b;
+} do_transforma;
+
+
 // Funkcja tworząca bufor
 circular_buffer* circular_buffer_create() {
     circular_buffer* cb = (circular_buffer*) malloc(sizeof(circular_buffer));
@@ -71,7 +78,30 @@ video_frame* circular_buffer_pop(circular_buffer* cb) {
 }
 void circular_buffer_destroy(circular_buffer* buffer) {
     if(pthread_mutex_destroy(&buffer->mtx)) ERR("mutex destroy");
+    // zeby nie robic double free idziemy od taila i zwalniamy tyle ile jest elementow
+    int indx = buffer->tail;
+    for(int i=0;i<buffer->n;i++) {
+        free(buffer->buffer[indx]);
+        indx = (indx+1) % BUFFER_SIZE;
+    }
     free(buffer);
+}
+
+void canceletion_point(){
+    
+}
+
+void* decode_thread(void* arg){
+
+}
+
+void* transform_thread(void* arg){
+    
+}
+
+
+void* display_thread(void* arg){
+    
 }
 
 int main(int argc, char* argv[])
@@ -79,11 +109,34 @@ int main(int argc, char* argv[])
     UNUSED(argc);
     UNUSED(argv);
 
+    // blokujemy siginta 
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set,SIGINT);
+    pthread_sigmask(SIG_BLOCK,&set,NULL);
+
+    circular_buffer* buffor_a = circular_buffer_create();  // ten bufor sie kontaktuje miedzy decode <-> transform
+    circular_buffer* buffor_b = circular_buffer_create();  // ten bufor kontaktuje sie miedzy transform <-> display
+    
+    do_transforma* dt = (do_transforma*)malloc(sizeof(do_transforma));
+    
+    pthread_t decode;
+    pthread_t transform;
+    pthread_t display;
+
+    if(pthread_create(&decode,NULL,decode_thread,buffor_a)) ERR("thread create");
+    if(pthread_create(&transform,NULL,transform_thread,dt)) ERR("thread create");
+    if(pthread_create(&decode,NULL,decode_thread,buffor_a)) ERR("thread create");
+    
+    // teraz te watki sobue jakos dzialaja wiec main tylko czeka na sygnal
+
+
     
     // // one-thread video_frame flow example. You can remove those lines
     // video_frame* f = decode_frame();
     // transform_frame(f);
     // display_frame(f);
 
+    free(dt);
     exit(EXIT_SUCCESS);
 }

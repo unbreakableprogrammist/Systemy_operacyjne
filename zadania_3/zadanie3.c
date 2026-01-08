@@ -46,7 +46,7 @@ typedef struct signal_args{
 
 
 void przerwanie(void* arg){
-
+    printf("Kocham Legię!!! \n");
 }
 
 void* thread_work(void* argument) {
