@@ -88,11 +88,15 @@ void circular_buffer_destroy(circular_buffer* buffer) {
 }
 
 void canceletion_point(){
-    
+    printf("Kocham Legię \n");
 }
 
 void* decode_thread(void* arg){
+    pthread_cleanup_push(canceletion_point,NULL);
+    
 
+
+    pthread_cleanup_pop(canceletion_point,NULL);
 }
 
 void* transform_thread(void* arg){
