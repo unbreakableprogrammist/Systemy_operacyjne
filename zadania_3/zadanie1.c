@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
     sleep(1); // dajemy czas na uruchomienie watkow
     srand(time(NULL));
     // teraz glowna czesc 
-    struct timespec minisek = {0,100000000};
+    struct timespec minisek = {1,0}; // 1 sekunda
     struct timespec maly_sen = {0, 1000000}; // 1 milisekunda (dla ochrony procesora)
 
     while(running){
