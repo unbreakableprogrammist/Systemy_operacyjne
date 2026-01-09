@@ -160,6 +160,21 @@ pthread_cleanup_pop(1);
 
 ```
 
+### Punkty Anulowania (Cancellation Points)
+
+W domyślnym trybie (*deferred*) wątek nie jest zabijany natychmiast po otrzymaniu `pthread_cancel`. Kontynuuje on pracę aż do momentu wywołania specjalnej funkcji systemowej (tzw. **Cancellation Point**), w której sprawdza, czy powinien się zakończyć.
+
+**Najważniejsze funkcje będące punktami anulowania:**
+
+
+* Operacje wejścia/wyjścia:** `read()`, `write()` – wątek zginie, próbując czytać/pisać.
+
+
+* Czekanie:** `sleep()`, `nanosleep()`, `pause()`, `select()` – wątek zginie, zamiast spać dalej.
+
+
+* Ręczne sprawdzenie:** `pthread_testcancel()` – funkcja, którą wpisujemy ręcznie w pętlach obliczeniowych (które nie używają powyższych funkcji), aby wymusić sprawdzenie, czy nadeszło żądanie anulowania.
+
 ---
 
 ### 5. Mutexy - Synchronizacja Danych
