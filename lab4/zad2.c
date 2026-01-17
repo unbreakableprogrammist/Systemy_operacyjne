@@ -149,7 +149,7 @@ int main() {
     if (pthread_cond_init(&argument->cv, NULL) != 0) ERR("init");
     if (pthread_mutex_init(&argument->mutex, NULL) != 0) ERR("init");
 
-    
+    // tablica threadow 
     pthread_t tid[THREAD_NUM];
     for (int i = 0; i < THREAD_NUM; i++) {
         arg* personalised_id = malloc(sizeof(arg));
@@ -158,28 +158,28 @@ int main() {
         if (pthread_create(&tid[i], NULL, thread_work, personalised_id) != 0) ERR("create");
     }
 
-    char input_buffer[BUFFERSIZE];
+
+    char input_buffer[20];
     while (work) {
         printf("Nacisnij enter aby obudzic watek...\n");
-        // POPRAWKA FGETS: line to tablica, więc nie dajemy &line
         if (fgets(input_buffer, BUFFERSIZE, stdin) != NULL) {
-            pthread_mutex_lock(&argument->mutex);
-            
-            if (argument->free_threads > 0) {
-                argument->is_work = 1;
-                pthread_cond_signal(&argument->cv);
+            pthread_mutex_lock(&argument->mutex); // blokujemy mutex
+            if (argument->free_threads > 0) {  // jesli mamy wolnych murzynow
+                argument->is_work = 1;  // dajemy prace 
+                pthread_cond_signal(&argument->cv); // uruchamiamy 
             } else {
                 printf("Brak wolnych watkow, czekam...\n");
             }
-            pthread_mutex_unlock(&argument->mutex);
+            pthread_mutex_unlock(&argument->mutex);  // odblokowanie mutexa 
         } else {
-            if (errno == EINTR) continue;
+            if (errno == EINTR) continue; // jesli to bylo jakies dziwne przerwanie to lecimy dalej 
             break;
         }
     }
-
+    // WAŻNE wybudzamy wszystkie watki 
     pthread_cond_broadcast(&argument->cv);
 
+    //joinujemy
     for (int i = 0; i < THREAD_NUM; i++) {
         pthread_join(tid[i], NULL);
     }
