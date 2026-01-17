@@ -15,4 +15,4 @@ zad2: zad2.c
 zad1: zad1.c
 	$(CC) $(CFLAGS) $(LDFLAGS) zad1.c -o zad1 $(LDLIBS)
 clean:
-	rm -f zad1 zad2 zad3 zad4
+	rm -f zad1 zad2 zad3 zad4 *.bin
