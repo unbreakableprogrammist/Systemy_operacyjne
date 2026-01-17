@@ -36,6 +36,7 @@ void* thread_work(void* arg){
     fprintf(stderr, "Koniec alarmu , mineło %d sekund\n",time);
     if(sem_post(argument->semaphore)<0) ERR("semafor post");
     free(arg);
+    return NULL;
 }
 
 int main(){
@@ -45,7 +46,7 @@ int main(){
     if(sigaction(SIGINT,&sa,NULL)<0)
         ERR("sigaction");
 
-    char* line [MAX_INPUT];
+    char line [MAX_INPUT];
     sem_t semafor;
     if(sem_init(&semafor,0,5)<0)
         ERR("sem_init");
@@ -54,7 +55,7 @@ int main(){
     if (pthread_attr_setdetachstate(&atrybuty, PTHREAD_CREATE_DETACHED) != 0) ERR("attr_setdetachstate");
     while(work){
         printf("Please set the alarm :  ");
-        if(fgets(&line,MAX_INPUT,stdin) < 0){
+        if(fgets(&line,MAX_INPUT,stdin) == NULL){
             if(errno == EINTR) continue;
             ERR("fgets");
         }
@@ -78,7 +79,7 @@ int main(){
         arg->time = time;
         arg->semaphore = &semafor;
         pthread_t tid;
-        if(pthread_create(&tid,&atrybuty,thread_work,arg)<0) ERR("pthread create");
+        if(pthread_create(&tid,&atrybuty,thread_work,arg)!=0) ERR("pthread create");
         
       
 
