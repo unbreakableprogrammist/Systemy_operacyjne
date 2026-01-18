@@ -95,49 +95,50 @@ void* thread_work(void* argument){
     }
     pthread_mutex_unlock(args->mtx);
 
+    // tutaj juz wiemy ze mozemy zaczac grac 
     if(*game_over) return NULL;
 
     // --- PĘTLA GRY ---
-    while(1) {
-        // [BARIERA 1] START RUNDY
+    while(!*game_over) {
+        // synchronizujemy zeby wszyscy gracze tu byli 
         pthread_barrier_wait(args->barriera);
-        if (*game_over) break; 
+         
 
-        // 1. Logika wygranej
-        int suit = hand[0] % 4;
+        // bierzemy pierwszy kolor
+        int kolor = hand[0] % 4;
         int is_winner = 1;
-        for(int i=0; i<HAND_SIZE; i++){
-            if(hand[i] % 4 != suit) is_winner = 0;
+        for(int i=0; i<HAND_SIZE; i++){  // idziemy po wszystkich kolorach 
+            if(hand[i] % 4 != kolor) is_winner = 0;  // jesli natrafimy na inny to is_winner = false
         }
-
+        // jesli wygralismy 
         if(is_winner) {
-            pthread_mutex_lock(args->mtx);
+            pthread_mutex_lock(args->mtx); // blokujemy mutex, zeby nikt inny nie zdazyl tu wejsc
             if(!(*game_over)){
                 *game_over = 1;
                 printf("\n>>> GRACZ %d WYGRYWA! <<<\n", id);
                 print_deck(hand, HAND_SIZE);
-                
-                // POPRAWKA: Używamy pthread_kill do konkretnego wątku (Main)
+                // wysylamy siginta mainowi
                 pthread_kill(args->main_tid, SIGINT);
             }
+            // odblokowujemy gameover
             pthread_mutex_unlock(args->mtx);
         }
 
-        // 2. Wybór karty (LOSOWO - bez strategii)
+        // karte do oddania wybieramy losowo
         int idx_to_pass = rand_r(&seed) % HAND_SIZE;
         args->card_to_pass = hand[idx_to_pass];
 
-        // [BARIERA 2] WYSTAWIENIE
+        // teraz synchronizujemy czekajac az wszystkie watki wystawia karte 
         pthread_barrier_wait(args->barriera);
 
-        // 3. Pobranie karty
+        //bierzemy sobie karte od innego gracza
         hand[idx_to_pass] = *(args->recive);
         
-        // Logowanie (opcjonalne)
+        // wypisujemy stan gry 
         printf("Gracz %d: ", id); 
         print_deck(hand, HAND_SIZE);
         
-        // [BARIERA 3] POBRANIE (Kluczowe dla stabilności!)
+        // i czekamy az wszyscy gracze tu dojda
         pthread_barrier_wait(args->barriera);
     }
     
@@ -146,7 +147,6 @@ void* thread_work(void* argument){
 
 int main(int argc, char *argv[])
 {
-    setbuf(stdout, NULL);
 
     if(argc != 2) ERR("usage: ./program N");
     int n = atoi(argv[1]);
@@ -158,21 +158,24 @@ int main(int argc, char *argv[])
     for (int i = 0; i < DECK_SIZE; ++i) deck[i] = i;
     shuffle(deck, DECK_SIZE);
 
-    arg argumenty[n];
-    pthread_t watki[n];
-    pthread_barrier_t bariera;
-    pthread_cond_t cv;
-    pthread_mutex_t mtx;
-    volatile sig_atomic_t game_over = 0;
-    int ready = 0;
+    // wszystkie rzeczy trzymamy na STOSIE maina, ogl moza sie dostac do tego stosu z innych watkow poprzez adres
+    arg argumenty[n];  // tu beda nasze argumenty dla kazdego watku 
+    pthread_t watki[n]; // tablica na watki 
+    pthread_barrier_t bariera; // bariera
+    pthread_cond_t cv; // cond variable potrzebna do poczekania na graczy
+    pthread_mutex_t mtx; // mtx do cv 
+    volatile sig_atomic_t game_over = 0;  // game over 
+    int ready = 0;  // czy mozna zaczynac gre
 
     // Pobieramy ID wątku Main
     pthread_t main_thread_id = pthread_self();
 
+    // inicjalizujemy wszystko
     if(pthread_barrier_init(&bariera, NULL, n) != 0) ERR("barrier");
     if(pthread_cond_init(&cv, NULL) != 0) ERR("cond");
     if(pthread_mutex_init(&mtx, NULL) != 0) ERR("mutex");
 
+    // ustawiamy handlowanie sygnalow 
     sigset_t mask;
     int sig;
     sigemptyset(&mask);
@@ -182,31 +185,35 @@ int main(int argc, char *argv[])
 
     printf("PID: %d. Czekam na %d graczy...\n", getpid(), n);
 
-    // FAZA 1: ZBIERANIE
+
     for(int i=0; i<n; i++){
+        // zasypiamy i czekamy sigwaitem na jakis blokowany sygnal
         if(sigwait(&mask, &sig) != 0) ERR("sigwait");
         
         switch (sig)
         {
-        case SIGUSR1:
+        case SIGUSR1:  // jestli dostalismy siguser1
             printf("Dolacza gracz %d\n", i);
+            // ustawiamy mu wszystko 
             argumenty[i].id = i;
             argumenty[i].barriera = &bariera;
             argumenty[i].game_over = &game_over;
             argumenty[i].cv = &cv;
             argumenty[i].mtx = &mtx; 
             argumenty[i].ready = &ready;
-            // Przekazujemy ID Maina do wątku
             argumenty[i].main_tid = main_thread_id;
             
+            // sprytny sposob , dajemy sasiadowi po lewej wskaznik na zmienna do ktorej bedziemy wpisywac nasza karte ktora oddajemy
             int left = (i - 1 + n) % n;
-            argumenty[i].recive = &argumenty[left].card_to_pass; 
-            
+            argumenty[i].recive = &argumenty[left].card_to_pass;
+
+            // wpisujemy karty , skoro sa poshuflowane to po prostu pierwsze 7 kazdemu 
             int iter = 0;
             for(int j=i*HAND_SIZE; j<i*HAND_SIZE+HAND_SIZE; j++){
                 argumenty[i].hand[iter] = deck[j];
                 iter++;
             }
+            // tworzymy watki 
             if(pthread_create(&watki[i], NULL, thread_work, &argumenty[i]) != 0) ERR("create");
             break;
 
@@ -216,25 +223,25 @@ int main(int argc, char *argv[])
         }
     }
     
-    // FAZA 2: START
+    
     printf("Start gry!\n");
     pthread_mutex_lock(&mtx);
     ready = 1;
-    pthread_cond_broadcast(&cv);
+    pthread_cond_broadcast(&cv); // budzimy watki 
     pthread_mutex_unlock(&mtx);
 
-    // FAZA 3: OCZEKIWANIE NA KONIEC
+    // czekamy na SIGINT z klawiatury lub pthread_kill
     if(sigwait(&mask, &sig) != 0) ERR("sigwait");
     
     printf("\nKoniec gry (Odebrano sygnał %d). Sprzątam...\n", sig);
     
-    // Ustawiamy flagę
+    // ustawiamy koniec gry 
     pthread_mutex_lock(&mtx);
     game_over = 1;
     pthread_cond_broadcast(&cv); 
     pthread_mutex_unlock(&mtx);
 
-    // JOINY
+    // czyszczenie 
     for(int i=0; i<n; i++){
         pthread_join(watki[i], NULL);
     }
