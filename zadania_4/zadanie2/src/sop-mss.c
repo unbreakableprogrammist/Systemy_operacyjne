@@ -76,27 +76,34 @@ typedef struct arg{
     pthread_cond_t* cv;
     pthread_mutex_t* mtx;
     volatile sig_atomic_t* game_over;
+    pthread_t main_tid; // Potrzebne do pthread_kill
 } arg;
-
 
 void* thread_work(void* argument){
     arg* args = (arg*) argument;
     int id = args->id;
     int* hand = args->hand;
     volatile sig_atomic_t* game_over = args->game_over;
+    
+    // Unikalny seed dla każdego wątku
+    unsigned int seed = time(NULL) ^ id;
 
+    // --- POCZEKALNIA ---
     pthread_mutex_lock(args->mtx);
     while (!(*args->ready) && !(*game_over)) {
         pthread_cond_wait(args->cv, args->mtx);
     }
     pthread_mutex_unlock(args->mtx);
-    // jesli koniec to wychodzimy 
+
     if(*game_over) return NULL;
 
-    while(1) { // Pętla nieskończona, wyjście sterowane wewnątrz
-        pthread_barrier_wait(args->barriera); // czekamy az wszyscy beda tutaj
+    // --- PĘTLA GRY ---
+    while(1) {
+        // [BARIERA 1] START RUNDY
+        pthread_barrier_wait(args->barriera);
+        if (*game_over) break; 
 
-        // 2. Logika wygranej
+        // 1. Logika wygranej
         int suit = hand[0] % 4;
         int is_winner = 1;
         for(int i=0; i<HAND_SIZE; i++){
@@ -109,49 +116,36 @@ void* thread_work(void* argument){
                 *game_over = 1;
                 printf("\n>>> GRACZ %d WYGRYWA! <<<\n", id);
                 print_deck(hand, HAND_SIZE);
-
+                
+                // POPRAWKA: Używamy pthread_kill do konkretnego wątku (Main)
+                pthread_kill(args->main_tid, SIGINT);
             }
             pthread_mutex_unlock(args->mtx);
         }
 
-        // 3. Strategia (Mądra wymiana)
-        int counts[4] = {0};
-        for(int i=0; i<HAND_SIZE; i++) counts[hand[i]%4]++;
-        
-        int target_suit = 0, max_c = -1;
-        for(int i=0; i<4; i++) if(counts[i]>max_c) { max_c=counts[i]; target_suit=i; }
-
-        int idx_to_pass = -1;
-        for(int i=0; i<HAND_SIZE; i++) {
-            if(hand[i] % 4 != target_suit) { idx_to_pass = i; break; }
-        }
-        if(idx_to_pass == -1) { // Losowo jeśli wszystkie pasują (rzadkie)
-             unsigned int seed = time(NULL) ^ id;
-             idx_to_pass = rand_r(&seed) % HAND_SIZE;
-        }
-        
+        // 2. Wybór karty (LOSOWO - bez strategii)
+        int idx_to_pass = rand_r(&seed) % HAND_SIZE;
         args->card_to_pass = hand[idx_to_pass];
 
-        // 4. BARIERA WYSTAWIENIA (Czekamy aż każdy wystawi kartę)
+        // [BARIERA 2] WYSTAWIENIE
         pthread_barrier_wait(args->barriera);
-        // Uwaga: Tutaj nie sprawdzamy game_over, żeby nie rozbić synchronizacji w połowie wymiany!
 
-        // 5. Pobranie karty
+        // 3. Pobranie karty
         hand[idx_to_pass] = *(args->recive);
         
-        // Logowanie (opcjonalne, może spowalniać)
-        printf("Gracz %d: ", id);
+        // Logowanie (opcjonalne)
+        printf("Gracz %d: ", id); 
         print_deck(hand, HAND_SIZE);
         
+        // [BARIERA 3] POBRANIE (Kluczowe dla stabilności!)
+        pthread_barrier_wait(args->barriera);
     }
-    
     
     return NULL;
 }
 
 int main(int argc, char *argv[])
 {
-    // FIX 1: Wyłączamy buforowanie wyjścia (kluczowe dla logów)
     setbuf(stdout, NULL);
 
     if(argc != 2) ERR("usage: ./program N");
@@ -171,6 +165,9 @@ int main(int argc, char *argv[])
     pthread_mutex_t mtx;
     volatile sig_atomic_t game_over = 0;
     int ready = 0;
+
+    // Pobieramy ID wątku Main
+    pthread_t main_thread_id = pthread_self();
 
     if(pthread_barrier_init(&bariera, NULL, n) != 0) ERR("barrier");
     if(pthread_cond_init(&cv, NULL) != 0) ERR("cond");
@@ -199,6 +196,8 @@ int main(int argc, char *argv[])
             argumenty[i].cv = &cv;
             argumenty[i].mtx = &mtx; 
             argumenty[i].ready = &ready;
+            // Przekazujemy ID Maina do wątku
+            argumenty[i].main_tid = main_thread_id;
             
             int left = (i - 1 + n) % n;
             argumenty[i].recive = &argumenty[left].card_to_pass; 
@@ -225,12 +224,8 @@ int main(int argc, char *argv[])
     pthread_mutex_unlock(&mtx);
 
     // FAZA 3: OCZEKIWANIE NA KONIEC
-    // Czekamy na sygnał SIGINT (od Ctrl+C lub od wątku przez raise)
-
     if(sigwait(&mask, &sig) != 0) ERR("sigwait");
     
-    // Jeśli to był SIGUSR1 (Sygnał 10), traktujemy go też jako koniec, 
-    // na wypadek gdyby system/użytkownik wysłał akurat ten sygnał.
     printf("\nKoniec gry (Odebrano sygnał %d). Sprzątam...\n", sig);
     
     // Ustawiamy flagę
@@ -239,7 +234,7 @@ int main(int argc, char *argv[])
     pthread_cond_broadcast(&cv); 
     pthread_mutex_unlock(&mtx);
 
-    // FIX 2: JOINY
+    // JOINY
     for(int i=0; i<n; i++){
         pthread_join(watki[i], NULL);
     }
