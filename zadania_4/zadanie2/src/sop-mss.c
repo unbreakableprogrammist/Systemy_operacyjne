@@ -65,18 +65,194 @@ void print_deck(const int *deck, int size)
     puts(buffer);
 }
 
+
+typedef struct arg{
+    int id;
+    int hand[HAND_SIZE];
+    int card_to_pass;
+    int* recive;
+    pthread_barrier_t* barriera;
+    int* ready;
+    pthread_cond_t* cv;
+    pthread_mutex_t* mtx;
+    volatile sig_atomic_t* game_over;
+} arg;
+
+
+void* thread_work(void* argument){
+    arg* args = (arg*) argument;
+    int id = args->id;
+    int* hand = args->hand;
+    volatile sig_atomic_t* game_over = args->game_over;
+    
+    // --- POCZEKALNIA ---
+    pthread_mutex_lock(args->mtx);
+    while (!(*args->ready) && !(*game_over)) {
+        pthread_cond_wait(args->cv, args->mtx);
+    }
+    pthread_mutex_unlock(args->mtx);
+
+    if(*game_over) return NULL;
+
+    // --- PĘTLA GRY ---
+    while(1) { // Pętla nieskończona, wyjście sterowane wewnątrz
+        
+        // 1. BARIERA POCZĄTKOWA (Synchronizacja rundy)
+        // Wszyscy tu czekają. Jeśli gra się skończyła, wszyscy razem wychodzą.
+        pthread_barrier_wait(args->barriera);
+        if (*game_over) break; // <--- JEDYNE BEZPIECZNE MIEJSCE NA WYJŚCIE
+
+        // 2. Logika wygranej
+        int suit = hand[0] % 4;
+        int is_winner = 1;
+        for(int i=0; i<HAND_SIZE; i++){
+            if(hand[i] % 4 != suit) is_winner = 0;
+        }
+
+        if(is_winner) {
+            pthread_mutex_lock(args->mtx);
+            if(!(*game_over)){
+                *game_over = 1;
+                printf("\n>>> GRACZ %d WYGRYWA! <<<\n", id);
+                print_deck(hand, HAND_SIZE);
+
+            }
+            pthread_mutex_unlock(args->mtx);
+        }
+
+        // 3. Strategia (Mądra wymiana)
+        int counts[4] = {0};
+        for(int i=0; i<HAND_SIZE; i++) counts[hand[i]%4]++;
+        
+        int target_suit = 0, max_c = -1;
+        for(int i=0; i<4; i++) if(counts[i]>max_c) { max_c=counts[i]; target_suit=i; }
+
+        int idx_to_pass = -1;
+        for(int i=0; i<HAND_SIZE; i++) {
+            if(hand[i] % 4 != target_suit) { idx_to_pass = i; break; }
+        }
+        if(idx_to_pass == -1) { // Losowo jeśli wszystkie pasują (rzadkie)
+             unsigned int seed = time(NULL) ^ id;
+             idx_to_pass = rand_r(&seed) % HAND_SIZE;
+        }
+        
+        args->card_to_pass = hand[idx_to_pass];
+
+        // 4. BARIERA WYSTAWIENIA (Czekamy aż każdy wystawi kartę)
+        pthread_barrier_wait(args->barriera);
+        // Uwaga: Tutaj nie sprawdzamy game_over, żeby nie rozbić synchronizacji w połowie wymiany!
+
+        // 5. Pobranie karty
+        hand[idx_to_pass] = *(args->recive);
+        
+        // Logowanie (opcjonalne, może spowalniać)
+        printf("Gracz %d: ", id);
+        print_deck(hand, HAND_SIZE);
+        
+    }
+    
+    
+    return NULL;
+}
+
 int main(int argc, char *argv[])
 {
-    UNUSED(argc);
-    UNUSED(argv);
+    // FIX 1: Wyłączamy buforowanie wyjścia (kluczowe dla logów)
+    setbuf(stdout, NULL);
+
+    if(argc != 2) ERR("usage: ./program N");
+    int n = atoi(argv[1]);
+    if (n < 2) ERR("min 2 players");
 
     srand(time(NULL));
 
     int deck[DECK_SIZE];
-    for (int i = 0; i < DECK_SIZE; ++i)
-        deck[i] = i;
+    for (int i = 0; i < DECK_SIZE; ++i) deck[i] = i;
     shuffle(deck, DECK_SIZE);
-    print_deck(deck, DECK_SIZE);
+
+    arg argumenty[n];
+    pthread_t watki[n];
+    pthread_barrier_t bariera;
+    pthread_cond_t cv;
+    pthread_mutex_t mtx;
+    volatile sig_atomic_t game_over = 0;
+    int ready = 0;
+
+    if(pthread_barrier_init(&bariera, NULL, n) != 0) ERR("barrier");
+    if(pthread_cond_init(&cv, NULL) != 0) ERR("cond");
+    if(pthread_mutex_init(&mtx, NULL) != 0) ERR("mutex");
+
+    sigset_t mask;
+    int sig;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGUSR1);
+    if(pthread_sigmask(SIG_BLOCK, &mask, NULL) != 0) ERR("sigmask");
+
+    printf("PID: %d. Czekam na %d graczy...\n", getpid(), n);
+
+    // FAZA 1: ZBIERANIE
+    for(int i=0; i<n; i++){
+        if(sigwait(&mask, &sig) != 0) ERR("sigwait");
+        
+        switch (sig)
+        {
+        case SIGUSR1:
+            printf("Dolacza gracz %d\n", i);
+            argumenty[i].id = i;
+            argumenty[i].barriera = &bariera;
+            argumenty[i].game_over = &game_over;
+            argumenty[i].cv = &cv;
+            argumenty[i].mtx = &mtx; 
+            argumenty[i].ready = &ready;
+            
+            int left = (i - 1 + n) % n;
+            argumenty[i].recive = &argumenty[left].card_to_pass; 
+            
+            int iter = 0;
+            for(int j=i*HAND_SIZE; j<i*HAND_SIZE+HAND_SIZE; j++){
+                argumenty[i].hand[iter] = deck[j];
+                iter++;
+            }
+            if(pthread_create(&watki[i], NULL, thread_work, &argumenty[i]) != 0) ERR("create");
+            break;
+
+        case SIGINT:
+            printf("\nPrzerwano (Ctrl+C). Koniec.\n");
+            exit(0);
+        }
+    }
+    
+    // FAZA 2: START
+    printf("Start gry!\n");
+    pthread_mutex_lock(&mtx);
+    ready = 1;
+    pthread_cond_broadcast(&cv);
+    pthread_mutex_unlock(&mtx);
+
+    // FAZA 3: OCZEKIWANIE NA KONIEC
+    // Czekamy na sygnał SIGINT (od Ctrl+C lub od wątku przez raise)
+    if(sigwait(&mask, &sig) != 0) ERR("sigwait");
+    
+    // Jeśli to był SIGUSR1 (Sygnał 10), traktujemy go też jako koniec, 
+    // na wypadek gdyby system/użytkownik wysłał akurat ten sygnał.
+    printf("\nKoniec gry (Odebrano sygnał %d). Sprzątam...\n", sig);
+    
+    // Ustawiamy flagę
+    pthread_mutex_lock(&mtx);
+    game_over = 1;
+    pthread_cond_broadcast(&cv); 
+    pthread_mutex_unlock(&mtx);
+
+    // FIX 2: JOINY
+    for(int i=0; i<n; i++){
+        pthread_join(watki[i], NULL);
+    }
+
+    printf("Wszystkie wątki zakończone.\n");
+    pthread_barrier_destroy(&bariera);
+    pthread_cond_destroy(&cv);
+    pthread_mutex_destroy(&mtx);
 
     exit(EXIT_SUCCESS);
 }
