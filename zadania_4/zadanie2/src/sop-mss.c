@@ -84,23 +84,17 @@ void* thread_work(void* argument){
     int id = args->id;
     int* hand = args->hand;
     volatile sig_atomic_t* game_over = args->game_over;
-    
-    // --- POCZEKALNIA ---
+
     pthread_mutex_lock(args->mtx);
     while (!(*args->ready) && !(*game_over)) {
         pthread_cond_wait(args->cv, args->mtx);
     }
     pthread_mutex_unlock(args->mtx);
-
+    // jesli koniec to wychodzimy 
     if(*game_over) return NULL;
 
-    // --- PĘTLA GRY ---
     while(1) { // Pętla nieskończona, wyjście sterowane wewnątrz
-        
-        // 1. BARIERA POCZĄTKOWA (Synchronizacja rundy)
-        // Wszyscy tu czekają. Jeśli gra się skończyła, wszyscy razem wychodzą.
-        pthread_barrier_wait(args->barriera);
-        if (*game_over) break; // <--- JEDYNE BEZPIECZNE MIEJSCE NA WYJŚCIE
+        pthread_barrier_wait(args->barriera); // czekamy az wszyscy beda tutaj
 
         // 2. Logika wygranej
         int suit = hand[0] % 4;
@@ -232,6 +226,7 @@ int main(int argc, char *argv[])
 
     // FAZA 3: OCZEKIWANIE NA KONIEC
     // Czekamy na sygnał SIGINT (od Ctrl+C lub od wątku przez raise)
+
     if(sigwait(&mask, &sig) != 0) ERR("sigwait");
     
     // Jeśli to był SIGUSR1 (Sygnał 10), traktujemy go też jako koniec, 
