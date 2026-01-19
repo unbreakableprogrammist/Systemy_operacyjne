@@ -8,13 +8,29 @@
 
 typedef struct thread_pool
 {
+    // Teraz malloc struktury automatycznie da im pamięć.
+    pthread_mutex_t mtx;
+    pthread_cond_t cv;
+    
+    void (*work_function)(void*);
+    int work_to_do;
+
+    // ZMIANA: Tablica wątków musi być tutaj, żeby przetrwała wyjście z funkcji
+    pthread_t *threads;
+    int pool_size;
+
+    pthread_barrier_t* barrier;
 } thread_pool_t;
 
 void *worker_thread(void *args) {
+    thread_pool_t* argument = (thread_pool_t*)args; 
+    printf("I have been waken up and my PID is : %d\n",pthread_self());
+    pthread_mutex_lock(&argument->mtx);
+    while(!argument->work_to_do){
+        pthread_cond_wait(&argument->cv,&argument->mtx);
+    }
+    pthread_mutex_unlock(&argument->mtx);
     
-    // TODO STAGE-2: Here is function used by worker thread
-    UNUSED(args);
-
     return NULL;
 }
 
@@ -22,10 +38,33 @@ thread_pool_t *initialize(int N)
 {
     if (N > MAX_POOL_SIZE)
         ERR("thread pool is too big!");
-    return NULL;
 
-    // TODO STAGE-1: Just do it
-    UNUSED(N);
+    printf("Tworze %d watkow \n", N);
+
+    // 1. Alokacja "pudełka" (struktury)
+    thread_pool_t* pool = malloc(sizeof(thread_pool_t));
+    if(!pool) ERR("malloc pool");
+    
+    pool->pool_size = N;
+
+    // 2. Inicjalizacja mutexów (używamy &, bo teraz są polami struktury)
+    if(pthread_mutex_init(&pool->mtx, NULL) != 0) ERR("pthread mutex init");
+    if(pthread_cond_init(&pool->cv, NULL) != 0) ERR("pthread cond var init");
+
+    // 3. Alokacja tablicy wątków i podpięcie jej do struktury
+    pool->threads = (pthread_t*)malloc(N * sizeof(pthread_t));
+    if(!pool->threads) ERR("malloc threads");
+
+    // 4. Tworzenie wątków
+    for(int i=0; i<N; i++){
+        // Przekazujemy 'pool' jako argument
+        pool->work_to_do = 0;
+        if(pthread_create(&pool->threads[i], NULL, worker_thread, pool) != 0) 
+            ERR("pthread _create");
+    }
+
+    // 5. ZWRACAMY STRUKTURĘ!
+    return pool;
 }
 
 void dispatch(thread_pool_t *pool, void (*work_function)(void *), void *args) 
