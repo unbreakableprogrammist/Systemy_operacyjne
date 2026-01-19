@@ -46,7 +46,7 @@ void *dostawcy_work(void* arg){
             pthread_mutex_unlock(args->do_work_mtx);
             break;
         }
-        pthread_mutex_lock(args->do_work_mtx);
+        pthread_mutex_unlock(args->do_work_mtx);
 
         int plot_idx = rand_r(&seed) % args->N;
         msleep(5 + plot_idx);
@@ -100,6 +100,22 @@ int main(int argc, char* argv[])
         if(pthread_create(&dostawcy[i],NULL,dostawcy_work,&dla_tragarzy[i])!=0) ERR("pthread create");
     }
 
-    // joinowanie watkow (zrobi sie pozniej)
+    pthread_join(ending_th, NULL);
+
+    // 2. Skoro ending_thread wrócił, to znaczy że było Ctrl+C i do_work=0
+    // Teraz czekamy aż tragarze dokończą pracę i wrócą
+    for(int i=0; i<Q; i++){
+        pthread_join(dostawcy[i], NULL);
+    }
+
+    // Podsumowanie
+    int suma = 0;
+    for(int i=0; i<N; i++){
+        suma += pola[i].worki;
+        pthread_mutex_destroy(&pola[i].mtx);
+    }
+    printf("Koniec. Lacznie dostarczono %d workow soli.\n", suma);
+
     pthread_mutex_destroy(&do_work_mutex);
+    return 0;
 }
