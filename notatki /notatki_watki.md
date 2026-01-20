@@ -241,6 +241,5 @@ if (numer_sygnalu == SIGINT) {
 
 ```
 
-```
-
-```
+#  Getclock
+ 
